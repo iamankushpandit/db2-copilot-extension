@@ -340,6 +340,9 @@ func (e *Executor) Execute(ctx context.Context, req Request, w io.Writer) error 
 
 		displayRows, total := database.LimitResults(rows, safety.QueryLimits.DisplayRows)
 
+		// Detect result shape for presentation.
+		shape := DetectShape(displayRows, total)
+
 		if safety.Transparency.ShowStatusMessages {
 			_ = streamStatus(w, fmt.Sprintf("📊 Processing %d rows (showing top %d)...", total, len(displayRows)))
 		}
@@ -383,6 +386,7 @@ func (e *Executor) Execute(ctx context.Context, req Request, w io.Writer) error 
 			DisplayRows:           displayRows,
 			TotalRows:             total,
 			SummaryStats:          summaryStatsText,
+			ResultShape:           string(shape),
 			Attempt:               attempt,
 			PreviousSQL:           prevSQL,
 			PreviousError:         prevError,

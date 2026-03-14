@@ -55,6 +55,8 @@ type ExplanationRequest struct {
 	TotalRows int
 	// SummaryStats contains statistics over all rows.
 	SummaryStats string
+	// ResultShape describes the result shape (empty/scalar/single/small/large).
+	ResultShape string
 	// Attempt is how many SQL generation attempts were made.
 	Attempt int
 	// PreviousSQL is set when there was a retry (for transparency).

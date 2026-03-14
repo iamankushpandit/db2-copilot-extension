@@ -112,6 +112,11 @@ func BuildExplanationSystemPrompt(req ExplanationRequest) string {
 
 	sb.WriteString(fmt.Sprintf("Query executed (%d attempt(s)):\n```sql\n%s\n```\n\n", req.Attempt, req.SQL))
 
+	// Include result shape hint when available.
+	if req.ResultShape != "" {
+		sb.WriteString(fmt.Sprintf("Result shape: %s\n\n", req.ResultShape))
+	}
+
 	if req.TotalRows == 0 {
 		sb.WriteString("The query returned no rows.\n\n")
 	} else {
@@ -130,8 +135,24 @@ func BuildExplanationSystemPrompt(req ExplanationRequest) string {
 	sb.WriteString("## Instructions\n\n")
 	sb.WriteString("- Explain clearly in plain language\n")
 	sb.WriteString("- Use markdown formatting\n")
-	sb.WriteString("- Show the data table\n")
-	sb.WriteString("- Highlight key insights\n")
+
+	// Shape-specific instructions.
+	switch req.ResultShape {
+	case "scalar":
+		sb.WriteString("- Present the single value prominently with context\n")
+		sb.WriteString("- No need for a table — state the answer directly\n")
+	case "single":
+		sb.WriteString("- Present the single row as a readable summary rather than a table\n")
+	case "small":
+		sb.WriteString("- Show the data table\n")
+		sb.WriteString("- Highlight key insights from the rows\n")
+	case "large":
+		sb.WriteString("- Show the data table\n")
+		sb.WriteString("- Focus on summarizing the full dataset using the statistics\n")
+	default:
+		sb.WriteString("- Show the data table\n")
+		sb.WriteString("- Highlight key insights\n")
+	}
 
 	if req.ShowSQL {
 		if req.UseCollapsibleDetails {
