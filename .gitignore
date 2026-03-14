@@ -33,3 +33,6 @@ vendor/
 
 # Log files
 *.log
+
+# Runtime data directories (created automatically)
+data/
