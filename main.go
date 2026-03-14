@@ -189,11 +189,16 @@ func main() {
 		auditLogger,
 	)
 
-	// ── Step 12: Wire HTTP handlers ───────────────────────────────────────────
+	// ── Step 12: Build health checker ────────────────────────────────────────
+	healthChecker := pipeline.NewHealthChecker(dbClient, sqlGen, crawler, cfgMgr, auditLogger)
+	healthChecker.Start(bgCtx)
+	log.Println("INFO health checker started")
+
+	// ── Step 13: Wire HTTP handlers ──────────────────────────────────────────
 	agentSvc := agent.NewService(executor, publicKey)
 	oauthSvc := oauth.NewService(cfg.ClientID, cfg.ClientSecret, cfg.FQDN)
 
-	// ── Step 12a: Build admin UI ──────────────────────────────────────────────
+	// ── Step 13a: Build admin UI ─────────────────────────────────────────────
 	authSvc := admin.NewAuthService(cfg.ClientID, cfg.ClientSecret, cfg.FQDN, cfg.AdminSessionSecret, cfgMgr)
 	adminSvc := admin.NewService(cfgMgr, crawler, dbClient, sqlGen, authSvc, dbType)
 
@@ -201,7 +206,7 @@ func main() {
 	mux.HandleFunc("POST /agent", agentSvc.ChatCompletion)
 	mux.HandleFunc("GET /auth/authorization", oauthSvc.PreAuth)
 	mux.HandleFunc("GET /auth/callback", oauthSvc.PostAuth)
-	mux.HandleFunc("GET /health", healthHandler)
+	mux.Handle("GET /health", healthChecker)
 	adminSvc.RegisterRoutes(mux)
 
 	srv := &http.Server{
@@ -209,7 +214,7 @@ func main() {
 		Handler: mux,
 	}
 
-	// ── Step 13: Graceful shutdown ────────────────────────────────────────────
+	// ── Step 14: Graceful shutdown ───────────────────────────────────────────
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
 
@@ -235,12 +240,6 @@ func main() {
 		log.Fatalf("FATAL server error: %v", err)
 	}
 	log.Println("INFO server stopped")
-}
-
-// healthHandler returns a simple 200 OK response.
-func healthHandler(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintln(w, `{"status":"ok"}`)
 }
 
 // buildLLMProviders creates SQL generation and explanation providers based on config.

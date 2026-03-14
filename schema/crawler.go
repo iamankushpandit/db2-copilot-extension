@@ -68,6 +68,24 @@ func (c *Crawler) Start(ctx context.Context) {
 	}()
 }
 
+// LastCrawled returns the time of the most recent successful schema crawl.
+func (c *Crawler) LastCrawled() time.Time {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.lastCrawled
+}
+
+// IsStale returns true if the cached schema is older than the configured max age
+// or if no schema has been crawled yet.
+func (c *Crawler) IsStale() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.info == nil {
+		return true
+	}
+	return time.Since(c.lastCrawled) >= c.maxAge
+}
+
 // refresh performs an actual crawl and updates the cache.
 func (c *Crawler) refresh(ctx context.Context) (*database.SchemaInfo, error) {
 	info, err := c.client.CrawlSchema(ctx)

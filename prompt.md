@@ -722,6 +722,95 @@ On SIGTERM/SIGINT:
 
 ---
 
+## Health Check System
+
+A comprehensive health check system monitors all critical components and exposes their status via the `/health` endpoint.
+
+### Configuration
+
+Health settings live in `query_safety.json` under the `"health"` key (see Configuration Files section). Defaults:
+- Check interval: 60 seconds
+- Database ping: enabled
+- LLM ping: enabled (checks whichever provider is configured — Ollama, Copilot, or OpenAI-compatible)
+- Schema max age: 6 hours
+- Schema auto-refresh: enabled
+
+### Components Checked
+
+1. **Database** — `Ping()` call to the database. Status: `healthy` if reachable, `unhealthy` if ping fails. Includes latency measurement.
+2. **LLM** — calls `Available(ctx)` on the SQL generation provider. Status: `healthy` if available, `degraded` if unavailable (the system can fall back). Includes latency measurement.
+3. **Schema** — checks whether the cached Tier 1 schema is within the configured max age. Status: `healthy` if fresh, `degraded` if stale or empty.
+
+### Overall Status
+
+- `healthy` — all components are healthy
+- `degraded` — at least one component is degraded but none are unhealthy
+- `unhealthy` — at least one component is unhealthy (e.g., database unreachable)
+
+### `/health` Endpoint Response
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-03-14T10:00:00Z",
+  "components": [
+    {
+      "name": "database",
+      "status": "healthy",
+      "message": "postgres reachable",
+      "latency_ms": 3
+    },
+    {
+      "name": "llm",
+      "status": "healthy",
+      "message": "ollama/sqlcoder:7b available",
+      "latency_ms": 45
+    },
+    {
+      "name": "schema",
+      "status": "healthy",
+      "message": "last crawled 2026-03-14T09:55:00Z"
+    }
+  ]
+}
+```
+
+When any component is unhealthy the endpoint returns HTTP 503 (Service Unavailable). Otherwise it returns HTTP 200.
+
+### Background Checks
+
+On startup, the health checker runs an initial check immediately, then starts a periodic ticker at the configured interval (default 60 s). Each periodic check:
+1. Runs all component checks with a 10-second timeout
+2. Stores the report for the next `/health` request
+3. Logs a `HEALTH_CHECK` audit event with component statuses
+4. If overall status is not healthy, emits a `WARN` log line
+
+### Implementation
+
+Lives in `pipeline/health.go`:
+
+```go
+type HealthChecker struct {
+    db          database.Client
+    sqlGen      llm.TextToSQLProvider
+    crawler     *schema.Crawler
+    cfgMgr      *config.Manager
+    auditLogger *audit.Logger
+
+    mu         sync.RWMutex
+    lastReport *HealthReport
+}
+```
+
+Key methods:
+- `NewHealthChecker(db, sqlGen, crawler, cfgMgr, auditLogger)` — constructor
+- `Check(ctx)` — runs all checks, returns `*HealthReport`
+- `Start(ctx)` — begins periodic background checks (goroutine exits when ctx cancelled)
+- `LastReport()` — returns most recent report without running a new check
+- `ServeHTTP(w, r)` — implements `http.Handler` for direct use as the `/health` endpoint
+
+---
+
 ## File Structure
 
 ```
@@ -766,7 +855,8 @@ db2-copilot-extension/
 │   ├── correction.go              # Self-correction loop
 │   ├── learning.go                # Learned corrections store (100 rolling, LRU eviction)
 │   ├── presenter.go               # Result shape detection + presentation
-│   └── ratelimit.go              # Per-user and global rate limiting
+│   ├── ratelimit.go              # Per-user and global rate limiting
+│   └── health.go                 # Periodic health checks and /health endpoint
 ├── audit/
 │   ├── logger.go                  # Append-only JSONL audit logger with daily rotation
 │   └── events.go                  # Audit event type definitions
@@ -830,4 +920,5 @@ Implement in this order, as each layer depends on the previous:
 15. Admin UI (configuration screens only)
 16. Startup sequence (verification chain)
 17. Graceful shutdown
-18. README with full documentation including read-only user setup SQL for PostgreSQL and DB2
+18. Health check system (periodic component monitoring, detailed /health endpoint)
+19. README with full documentation including read-only user setup SQL for PostgreSQL and DB2
