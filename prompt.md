@@ -921,4 +921,4 @@ Implement in this order, as each layer depends on the previous:
 16. Startup sequence (verification chain)
 17. Graceful shutdown
 18. Health check system (periodic component monitoring, detailed /health endpoint)
-18. README with full documentation including read-only user setup SQL for PostgreSQL and DB2
+19. README with full documentation including read-only user setup SQL for PostgreSQL and DB2
