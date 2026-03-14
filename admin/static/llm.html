@@ -1,0 +1,193 @@
+{{template "base" .}}
+{{define "content"}}
+<p style="color:#6e7781;margin-bottom:20px">
+  Configure which LLM providers are used for SQL generation and result explanation.
+  Changes take effect immediately via hot-reload.
+</p>
+
+<form method="POST" action="/admin/llm">
+{{$l := .LLM}}
+
+<div class="card">
+  <h2 style="margin-top:0">SQL Generator</h2>
+  <div class="form-row">
+    <label>Provider</label>
+    <select name="sql_provider" id="sql_provider" onchange="toggleSQLProvider()">
+      <option value="copilot" {{if eq $l.SQLGenerator.Provider "copilot"}}selected{{end}}>GitHub Copilot</option>
+      <option value="ollama" {{if eq $l.SQLGenerator.Provider "ollama"}}selected{{end}}>Ollama (local)</option>
+      <option value="openai_compat" {{if eq $l.SQLGenerator.Provider "openai_compat"}}selected{{end}}>OpenAI-Compatible API</option>
+    </select>
+  </div>
+
+  <div id="sql-copilot" style="display:none">
+    <div class="form-row">
+      <label>Copilot Model</label>
+      <input type="text" name="sql_copilot_model" value="{{$l.SQLGenerator.Copilot.Model}}" placeholder="gpt-4o">
+    </div>
+  </div>
+
+  <div id="sql-ollama" style="display:none">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="form-row">
+        <label>Ollama URL</label>
+        <input type="url" name="sql_ollama_url" value="{{$l.SQLGenerator.Ollama.URL}}" placeholder="http://localhost:11434">
+      </div>
+      <div class="form-row">
+        <label>Model</label>
+        <input type="text" name="sql_ollama_model" value="{{$l.SQLGenerator.Ollama.Model}}" placeholder="sqlcoder:7b">
+      </div>
+      <div class="form-row">
+        <label>Timeout (seconds)</label>
+        <input type="number" name="sql_ollama_timeout" value="{{$l.SQLGenerator.Ollama.TimeoutSeconds}}" min="5" max="120">
+      </div>
+      <div class="form-row">
+        <label>Temperature</label>
+        <input type="number" name="sql_ollama_temperature" value="{{$l.SQLGenerator.Ollama.Temperature}}" min="0" max="2" step="0.1">
+      </div>
+    </div>
+    <div class="form-row" style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="sql_ollama_auto_pull" id="soap" {{if $l.SQLGenerator.Ollama.AutoPull}}checked{{end}}>
+      <label for="soap" style="margin:0;font-weight:normal">Auto-pull model if not present</label>
+    </div>
+  </div>
+
+  <div id="sql-openai-compat" style="display:none">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="form-row">
+        <label>Base URL</label>
+        <input type="url" name="sql_compat_url" value="{{$l.SQLGenerator.OpenAICompat.URL}}" placeholder="http://localhost:8000/v1">
+      </div>
+      <div class="form-row">
+        <label>Model</label>
+        <input type="text" name="sql_compat_model" value="{{$l.SQLGenerator.OpenAICompat.Model}}" placeholder="sqlcoder">
+      </div>
+      <div class="form-row">
+        <label>API Key Env Var</label>
+        <input type="text" name="sql_compat_api_key_env" value="{{$l.SQLGenerator.OpenAICompat.APIKeyEnv}}" placeholder="OPENAI_COMPAT_API_KEY">
+        <p class="hint">Name of the environment variable containing the API key (leave empty if no key required).</p>
+      </div>
+      <div class="form-row">
+        <label>Timeout (seconds)</label>
+        <input type="number" name="sql_compat_timeout" value="{{$l.SQLGenerator.OpenAICompat.TimeoutSeconds}}" min="5" max="120">
+      </div>
+      <div class="form-row">
+        <label>Temperature</label>
+        <input type="number" name="sql_compat_temperature" value="{{$l.SQLGenerator.OpenAICompat.Temperature}}" min="0" max="2" step="0.1">
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Explainer (Result Explanation)</h2>
+  <div class="form-row">
+    <label>Provider</label>
+    <select name="exp_provider" id="exp_provider" onchange="toggleExpProvider()">
+      <option value="copilot" {{if eq $l.Explainer.Provider "copilot"}}selected{{end}}>GitHub Copilot</option>
+      <option value="ollama" {{if eq $l.Explainer.Provider "ollama"}}selected{{end}}>Ollama (local)</option>
+      <option value="openai_compat" {{if eq $l.Explainer.Provider "openai_compat"}}selected{{end}}>OpenAI-Compatible API</option>
+    </select>
+  </div>
+
+  <div id="exp-copilot" style="display:none">
+    <div class="form-row">
+      <label>Copilot Model</label>
+      <input type="text" name="exp_copilot_model" value="{{$l.Explainer.Copilot.Model}}" placeholder="gpt-4o">
+    </div>
+  </div>
+
+  <div id="exp-ollama" style="display:none">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="form-row">
+        <label>Ollama URL</label>
+        <input type="url" name="exp_ollama_url" value="{{$l.Explainer.Ollama.URL}}" placeholder="http://localhost:11434">
+      </div>
+      <div class="form-row">
+        <label>Model</label>
+        <input type="text" name="exp_ollama_model" value="{{$l.Explainer.Ollama.Model}}" placeholder="llama3.1:8b">
+      </div>
+      <div class="form-row">
+        <label>Timeout (seconds)</label>
+        <input type="number" name="exp_ollama_timeout" value="{{$l.Explainer.Ollama.TimeoutSeconds}}" min="5" max="120">
+      </div>
+      <div class="form-row">
+        <label>Temperature</label>
+        <input type="number" name="exp_ollama_temperature" value="{{$l.Explainer.Ollama.Temperature}}" min="0" max="2" step="0.1">
+      </div>
+    </div>
+  </div>
+
+  <div id="exp-openai-compat" style="display:none">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="form-row">
+        <label>Base URL</label>
+        <input type="url" name="exp_compat_url" value="{{$l.Explainer.OpenAICompat.URL}}" placeholder="http://localhost:8000/v1">
+      </div>
+      <div class="form-row">
+        <label>Model</label>
+        <input type="text" name="exp_compat_model" value="{{$l.Explainer.OpenAICompat.Model}}" placeholder="llama3">
+      </div>
+      <div class="form-row">
+        <label>API Key Env Var</label>
+        <input type="text" name="exp_compat_api_key_env" value="{{$l.Explainer.OpenAICompat.APIKeyEnv}}" placeholder="OPENAI_COMPAT_API_KEY">
+      </div>
+      <div class="form-row">
+        <label>Timeout (seconds)</label>
+        <input type="number" name="exp_compat_timeout" value="{{$l.Explainer.OpenAICompat.TimeoutSeconds}}" min="5" max="120">
+      </div>
+      <div class="form-row">
+        <label>Temperature</label>
+        <input type="number" name="exp_compat_temperature" value="{{$l.Explainer.OpenAICompat.Temperature}}" min="0" max="2" step="0.1">
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Fallback</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+    <div class="form-row" style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="fallback_enabled" id="fe" {{if $l.Fallback.Enabled}}checked{{end}}>
+      <label for="fe" style="margin:0;font-weight:normal">Enable automatic fallback</label>
+    </div>
+    <div class="form-row">
+      <label>SQL Generator Fallback</label>
+      <select name="sql_fallback">
+        <option value="copilot" {{if eq $l.Fallback.SQLGeneratorFallback "copilot"}}selected{{end}}>Copilot</option>
+        <option value="ollama" {{if eq $l.Fallback.SQLGeneratorFallback "ollama"}}selected{{end}}>Ollama</option>
+        <option value="openai_compat" {{if eq $l.Fallback.SQLGeneratorFallback "openai_compat"}}selected{{end}}>OpenAI Compat</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Explainer Fallback</label>
+      <select name="exp_fallback">
+        <option value="copilot" {{if eq $l.Fallback.ExplainerFallback "copilot"}}selected{{end}}>Copilot</option>
+        <option value="ollama" {{if eq $l.Fallback.ExplainerFallback "ollama"}}selected{{end}}>Ollama</option>
+        <option value="openai_compat" {{if eq $l.Fallback.ExplainerFallback "openai_compat"}}selected{{end}}>OpenAI Compat</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:8px">
+  <button class="btn btn-primary" type="submit">Save Changes</button>
+</div>
+</form>
+
+<script>
+function toggleSQLProvider() {
+  const v = document.getElementById('sql_provider').value;
+  document.getElementById('sql-copilot').style.display = v === 'copilot' ? '' : 'none';
+  document.getElementById('sql-ollama').style.display = v === 'ollama' ? '' : 'none';
+  document.getElementById('sql-openai-compat').style.display = v === 'openai_compat' ? '' : 'none';
+}
+function toggleExpProvider() {
+  const v = document.getElementById('exp_provider').value;
+  document.getElementById('exp-copilot').style.display = v === 'copilot' ? '' : 'none';
+  document.getElementById('exp-ollama').style.display = v === 'ollama' ? '' : 'none';
+  document.getElementById('exp-openai-compat').style.display = v === 'openai_compat' ? '' : 'none';
+}
+toggleSQLProvider();
+toggleExpProvider();
+</script>
+{{end}}

@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/iamankushpandit/db2-copilot-extension/admin"
 	"github.com/iamankushpandit/db2-copilot-extension/agent"
 	"github.com/iamankushpandit/db2-copilot-extension/audit"
 	"github.com/iamankushpandit/db2-copilot-extension/config"
@@ -192,11 +193,16 @@ func main() {
 	agentSvc := agent.NewService(executor, publicKey)
 	oauthSvc := oauth.NewService(cfg.ClientID, cfg.ClientSecret, cfg.FQDN)
 
+	// ── Step 12a: Build admin UI ──────────────────────────────────────────────
+	authSvc := admin.NewAuthService(cfg.ClientID, cfg.ClientSecret, cfg.FQDN, cfg.AdminSessionSecret, cfgMgr)
+	adminSvc := admin.NewService(cfgMgr, crawler, dbClient, sqlGen, authSvc, dbType)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /agent", agentSvc.ChatCompletion)
 	mux.HandleFunc("GET /auth/authorization", oauthSvc.PreAuth)
 	mux.HandleFunc("GET /auth/callback", oauthSvc.PostAuth)
 	mux.HandleFunc("GET /health", healthHandler)
+	adminSvc.RegisterRoutes(mux)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
@@ -258,6 +264,15 @@ func buildLLMProviders(llmCfg *config.LLMConfig, auditLogger *audit.Logger) (llm
 		} else {
 			sqlGen = ollamaSQL
 		}
+	case config.ProviderOpenAICompat:
+		compatCfg := llmCfg.SQLGenerator.OpenAICompat
+		apiKey := os.Getenv(compatCfg.APIKeyEnv)
+		compatSQL := llm.NewOpenAICompatProvider(compatCfg.URL, compatCfg.Model, apiKey, compatCfg.TimeoutSeconds, compatCfg.Temperature)
+		if llmCfg.Fallback.Enabled {
+			sqlGen = llm.NewFallbackSQLProvider(compatSQL, copilotSQL, onFallback)
+		} else {
+			sqlGen = compatSQL
+		}
 	default:
 		sqlGen = copilotSQL
 	}
@@ -273,6 +288,15 @@ func buildLLMProviders(llmCfg *config.LLMConfig, auditLogger *audit.Logger) (llm
 			explainer = llm.NewFallbackExplanationProvider(ollamaExp, copilotExp, onFallback)
 		} else {
 			explainer = ollamaExp
+		}
+	case config.ProviderOpenAICompat:
+		compatCfg := llmCfg.Explainer.OpenAICompat
+		apiKey := os.Getenv(compatCfg.APIKeyEnv)
+		compatExp := llm.NewOpenAICompatProvider(compatCfg.URL, compatCfg.Model, apiKey, compatCfg.TimeoutSeconds, compatCfg.Temperature)
+		if llmCfg.Fallback.Enabled {
+			explainer = llm.NewFallbackExplanationProvider(compatExp, copilotExp, onFallback)
+		} else {
+			explainer = compatExp
 		}
 	default:
 		explainer = copilotExp

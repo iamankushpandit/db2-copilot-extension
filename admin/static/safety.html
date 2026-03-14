@@ -1,0 +1,136 @@
+{{template "base" .}}
+{{define "content"}}
+<p style="color:#6e7781;margin-bottom:20px">
+  Configure row limits, cost thresholds, retry settings, transparency, and rate limiting.
+  All changes take effect immediately via hot-reload.
+</p>
+
+<form method="POST" action="/admin/safety">
+{{$s := .Safety}}
+
+<div class="card">
+  <h2 style="margin-top:0">Query Limits</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="form-row">
+      <label>Max Query Rows</label>
+      <input type="number" name="max_query_rows" value="{{$s.QueryLimits.MaxQueryRows}}" min="1" max="10000">
+      <p class="hint">Maximum rows returned from the database (injected LIMIT).</p>
+    </div>
+    <div class="form-row">
+      <label>Display Rows</label>
+      <input type="number" name="display_rows" value="{{$s.QueryLimits.DisplayRows}}" min="1" max="1000">
+      <p class="hint">Rows shown in the explanation (subset of max_query_rows).</p>
+    </div>
+    <div class="form-row">
+      <label>Query Timeout (seconds)</label>
+      <input type="number" name="query_timeout_seconds" value="{{$s.QueryLimits.QueryTimeoutSeconds}}" min="1" max="300">
+    </div>
+    <div class="form-row" style="display:flex;align-items:center;gap:8px;padding-top:22px">
+      <input type="checkbox" name="compute_summary_stats" id="css" {{if $s.QueryLimits.ComputeSummaryStats}}checked{{end}}>
+      <label for="css" style="margin:0;font-weight:normal">Compute summary statistics (min/max/avg/distinct counts)</label>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Cost Estimation (EXPLAIN)</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="form-row" style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="explain_before_execute" id="ebe" {{if $s.CostEstimation.ExplainBeforeExecute}}checked{{end}}>
+      <label for="ebe" style="margin:0;font-weight:normal">Run EXPLAIN before executing queries</label>
+    </div>
+    <div></div>
+    <div class="form-row">
+      <label>Max Estimated Rows</label>
+      <input type="number" name="max_estimated_rows" value="{{$s.CostEstimation.MaxEstimatedRows}}" min="1000">
+      <p class="hint">Reject queries estimated to scan more rows than this.</p>
+    </div>
+    <div class="form-row">
+      <label>Max Estimated Cost</label>
+      <input type="number" name="max_estimated_cost" value="{{$s.CostEstimation.MaxEstimatedCost}}" min="0" step="0.1">
+      <p class="hint">Reject queries with EXPLAIN cost above this value.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Self-Correction</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="form-row" style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="self_correction_enabled" id="sce" {{if $s.SelfCorrection.Enabled}}checked{{end}}>
+      <label for="sce" style="margin:0;font-weight:normal">Enable self-correction on failure</label>
+    </div>
+    <div class="form-row">
+      <label>Max Retries</label>
+      <input type="number" name="max_retries" value="{{$s.SelfCorrection.MaxRetries}}" min="0" max="3">
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Transparency</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div class="form-row" style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="show_sql_to_user" id="sstu" {{if $s.Transparency.ShowSQLToUser}}checked{{end}}>
+      <label for="sstu" style="margin:0;font-weight:normal">Show SQL to user</label>
+    </div>
+    <div class="form-row" style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="show_retries_to_user" id="srtu" {{if $s.Transparency.ShowRetriesToUser}}checked{{end}}>
+      <label for="srtu" style="margin:0;font-weight:normal">Show retry info to user</label>
+    </div>
+    <div class="form-row" style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="show_errors_to_user" id="setu" {{if $s.Transparency.ShowErrorsToUser}}checked{{end}}>
+      <label for="setu" style="margin:0;font-weight:normal">Show errors to user</label>
+    </div>
+    <div class="form-row" style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="show_status_messages" id="ssm" {{if $s.Transparency.ShowStatusMessages}}checked{{end}}>
+      <label for="ssm" style="margin:0;font-weight:normal">Show real-time status messages</label>
+    </div>
+    <div class="form-row" style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="use_collapsible_details" id="ucd" {{if $s.Transparency.UseCollapsibleDetails}}checked{{end}}>
+      <label for="ucd" style="margin:0;font-weight:normal">Wrap SQL in collapsible &lt;details&gt; block</label>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Rate Limiting</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+    <div class="form-row" style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="rate_limiting_enabled" id="rle" {{if $s.RateLimiting.Enabled}}checked{{end}}>
+      <label for="rle" style="margin:0;font-weight:normal">Enable rate limiting</label>
+    </div>
+    <div class="form-row">
+      <label>Requests/min per user</label>
+      <input type="number" name="requests_per_minute_per_user" value="{{$s.RateLimiting.RequestsPerMinutePerUser}}" min="1">
+    </div>
+    <div class="form-row">
+      <label>Global requests/min</label>
+      <input type="number" name="requests_per_minute_global" value="{{$s.RateLimiting.RequestsPerMinuteGlobal}}" min="1">
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Learned Corrections</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+    <div class="form-row" style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="learning_enabled" id="le" {{if $s.Learning.Enabled}}checked{{end}}>
+      <label for="le" style="margin:0;font-weight:normal">Enable learned corrections</label>
+    </div>
+    <div class="form-row">
+      <label>Max Corrections Stored</label>
+      <input type="number" name="max_corrections" value="{{$s.Learning.MaxCorrections}}" min="10" max="1000">
+    </div>
+    <div class="form-row">
+      <label>Max Corrections in Prompt</label>
+      <input type="number" name="max_corrections_in_prompt" value="{{$s.Learning.MaxCorrectionsInPrompt}}" min="1" max="50">
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:8px">
+  <button class="btn btn-primary" type="submit">Save Changes</button>
+</div>
+</form>
+{{end}}

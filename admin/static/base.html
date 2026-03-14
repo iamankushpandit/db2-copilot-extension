@@ -1,0 +1,77 @@
+{{define "base"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DB Copilot Admin — {{.PageTitle}}</title>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;background:#f6f8fa;color:#24292e;font-size:14px}
+    .nav{background:#24292e;color:#fff;padding:12px 24px;display:flex;align-items:center;gap:24px}
+    .nav-brand{font-weight:700;font-size:16px;color:#fff;text-decoration:none}
+    .nav a{color:#adb5bd;text-decoration:none;font-size:13px}
+    .nav a:hover,.nav a.active{color:#fff}
+    .nav-spacer{flex:1}
+    .nav-user{color:#adb5bd;font-size:13px}
+    .status-bar{padding:8px 24px;border-bottom:1px solid #e1e4e8;font-size:13px;display:flex;gap:16px;align-items:center}
+    .status-ok{background:#e6f4ea;color:#1a7f37}
+    .status-warn{background:#fff8c5;color:#b08800}
+    .status-err{background:#ffebe9;color:#cf222e}
+    .container{max-width:1100px;margin:0 auto;padding:24px}
+    h1{font-size:20px;margin:0 0 20px}
+    h2{font-size:16px;margin:16px 0 8px}
+    .card{background:#fff;border:1px solid #d0d7de;border-radius:6px;padding:20px;margin-bottom:20px}
+    .form-row{margin-bottom:14px}
+    label{display:block;font-weight:600;margin-bottom:4px;font-size:13px}
+    input[type=text],input[type=number],input[type=url],input[type=password],select,textarea{width:100%;padding:5px 10px;border:1px solid #d0d7de;border-radius:6px;font-size:14px;line-height:20px}
+    input[type=checkbox]{width:auto;margin-right:6px}
+    textarea{font-family:monospace;resize:vertical}
+    .hint{font-size:12px;color:#6e7781;margin-top:3px}
+    .btn{display:inline-block;padding:5px 16px;border:1px solid rgba(27,31,36,.15);border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;line-height:20px;background:#f6f8fa;color:#24292e;text-decoration:none}
+    .btn:hover{background:#f3f4f6}
+    .btn-primary{background:#2da44e;color:#fff;border-color:rgba(27,31,36,.15)}
+    .btn-primary:hover{background:#2c974b}
+    .btn-danger{background:#cf222e;color:#fff;border-color:rgba(27,31,36,.15)}
+    .btn-danger:hover{background:#a40e26}
+    .btn-sm{padding:3px 10px;font-size:12px}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th{text-align:left;padding:6px 10px;background:#f6f8fa;border-bottom:2px solid #d0d7de;font-weight:600}
+    td{padding:6px 10px;border-bottom:1px solid #d0d7de;vertical-align:top}
+    tr:hover td{background:#f6f8fa}
+    .badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:500}
+    .badge-green{background:#dafbe1;color:#116329}
+    .badge-gray{background:#f6f8fa;color:#6e7781;border:1px solid #d0d7de}
+    .badge-red{background:#ffebe9;color:#cf222e}
+    .badge-yellow{background:#fff8c5;color:#9a6700}
+    .flash{padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px}
+    .flash-success{background:#dafbe1;color:#116329;border:1px solid #74c57b}
+    .flash-error{background:#ffebe9;color:#cf222e;border:1px solid #ff818266}
+    details summary{cursor:pointer;font-size:13px;color:#0969da}
+    details[open] summary{margin-bottom:8px}
+    .section-divider{border:0;border-top:1px solid #d0d7de;margin:20px 0}
+    .schema-table{font-size:13px}
+    .col-list{font-family:monospace;font-size:12px;color:#6e7781}
+  </style>
+</head>
+<body>
+<nav class="nav">
+  <a class="nav-brand" href="/admin">🗄️ DB Copilot Admin</a>
+  <a href="/admin/schema"{{if eq .ActivePage "schema"}} class="active"{{end}}>Schema Access</a>
+  <a href="/admin/safety"{{if eq .ActivePage "safety"}} class="active"{{end}}>Query Safety</a>
+  <a href="/admin/llm"{{if eq .ActivePage "llm"}} class="active"{{end}}>LLM Config</a>
+  <a href="/admin/glossary"{{if eq .ActivePage "glossary"}} class="active"{{end}}>Glossary</a>
+  <a href="/admin/database"{{if eq .ActivePage "database"}} class="active"{{end}}>Database</a>
+  <span class="nav-spacer"></span>
+  <span class="nav-user">{{.Username}}</span>
+  <a href="/admin/logout">Sign out</a>
+</nav>
+<div class="status-bar status-{{.StatusClass}}">
+  {{.StatusText}}
+</div>
+<div class="container">
+  <h1>{{.PageTitle}}</h1>
+  {{if .Flash}}<div class="flash flash-{{.FlashType}}">{{.Flash}}</div>{{end}}
+  {{template "content" .}}
+</div>
+</body>
+</html>{{end}}

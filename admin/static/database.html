@@ -1,0 +1,76 @@
+{{template "base" .}}
+{{define "content"}}
+<p style="color:#6e7781;margin-bottom:20px">
+  View database connection status and configuration. The connection string is never shown for security.
+</p>
+
+<div class="card">
+  <h2 style="margin-top:0">Connection Status</h2>
+  <table style="max-width:600px">
+    <tbody>
+      <tr>
+        <td style="font-weight:600;width:200px">Database Type</td>
+        <td><span class="badge badge-green">{{.DBType}}</span></td>
+      </tr>
+      <tr>
+        <td style="font-weight:600">Connection String Env</td>
+        <td><code>{{.ConnStrEnv}}</code></td>
+      </tr>
+      <tr>
+        <td style="font-weight:600">Ping Status</td>
+        <td>
+          {{if .DBPingOK}}
+            <span class="badge badge-green">✅ Connected</span>
+          {{else}}
+            <span class="badge badge-red">❌ Unreachable</span>
+          {{end}}
+        </td>
+      </tr>
+      <tr>
+        <td style="font-weight:600">Read-Only Enforcement</td>
+        <td>
+          {{if .ReadOnlyEnforce}}
+            <span class="badge badge-green">enabled</span>
+          {{else}}
+            <span class="badge badge-yellow">disabled</span>
+          {{end}}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Schema Cache</h2>
+  <table style="max-width:600px">
+    <tbody>
+      <tr>
+        <td style="font-weight:600;width:200px">Schemas (Tier 1)</td>
+        <td>{{.SchemaCount}}</td>
+      </tr>
+      <tr>
+        <td style="font-weight:600">Tables (Tier 1)</td>
+        <td>{{.TableCount}}</td>
+      </tr>
+      <tr>
+        <td style="font-weight:600">Approved Tables</td>
+        <td>{{.ApprovedTableCount}}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Admin Access</h2>
+  <p style="color:#6e7781">The following GitHub users have admin access to this panel.</p>
+  {{if .AdminUsers}}
+  <ul style="margin:0;padding-left:20px">
+    {{range .AdminUsers}}
+    <li><code>{{.}}</code></li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p style="color:#cf222e">⚠️ No admin users configured. Add GitHub usernames to <code>admin_config.json → admin_ui.allowed_github_users</code>.</p>
+  {{end}}
+</div>
+{{end}}
