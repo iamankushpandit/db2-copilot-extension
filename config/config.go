@@ -5,13 +5,19 @@ import (
 	"os"
 )
 
-// Config holds all configuration values for the DB2 Copilot Extension.
+// Config holds the minimal set of bootstrap configuration values that must be
+// present as environment variables before the JSON config files can be loaded.
 type Config struct {
 	Port         string
 	ClientID     string
 	ClientSecret string
 	FQDN         string
-	DB2ConnStr   string
+	// DB2ConnStr is the IBM DB2 ODBC connection string (optional when using PostgreSQL).
+	DB2ConnStr string
+	// DatabaseURL is the PostgreSQL connection string (optional when using DB2).
+	DatabaseURL string
+	// ConfigDir is the directory that contains the JSON config files (default: "config").
+	ConfigDir string
 }
 
 // New reads configuration from environment variables and validates that all
@@ -23,6 +29,8 @@ func New() (*Config, error) {
 		ClientSecret: os.Getenv("CLIENT_SECRET"),
 		FQDN:         os.Getenv("FQDN"),
 		DB2ConnStr:   os.Getenv("DB2_CONN_STRING"),
+		DatabaseURL:  os.Getenv("DATABASE_URL"),
+		ConfigDir:    getEnvOrDefault("CONFIG_DIR", "config"),
 	}
 
 	if cfg.ClientID == "" {
@@ -34,8 +42,8 @@ func New() (*Config, error) {
 	if cfg.FQDN == "" {
 		return nil, fmt.Errorf("FQDN environment variable is required")
 	}
-	if cfg.DB2ConnStr == "" {
-		return nil, fmt.Errorf("DB2_CONN_STRING environment variable is required")
+	if cfg.DB2ConnStr == "" && cfg.DatabaseURL == "" {
+		return nil, fmt.Errorf("either DB2_CONN_STRING or DATABASE_URL environment variable is required")
 	}
 
 	return cfg, nil
