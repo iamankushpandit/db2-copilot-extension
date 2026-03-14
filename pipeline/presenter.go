@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -99,11 +100,12 @@ func FormatResultsTable(rows []map[string]interface{}) string {
 	if len(rows) == 0 {
 		return ""
 	}
-	// Collect column names in stable order.
+	// Collect column names in sorted order for deterministic output.
 	var cols []string
 	for k := range rows[0] {
 		cols = append(cols, k)
 	}
+	sort.Strings(cols)
 	var sb strings.Builder
 	sb.WriteString("| " + strings.Join(cols, " | ") + " |\n")
 	sb.WriteString("|")
