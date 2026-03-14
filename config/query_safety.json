@@ -1,0 +1,66 @@
+{
+  "query_limits": {
+    "max_query_rows": 100,
+    "display_rows": 10,
+    "compute_summary_stats": true,
+    "enforce_limit": true,
+    "query_timeout_seconds": 30
+  },
+  
+  "cost_estimation": {
+    "explain_before_execute": true,
+    "max_estimated_rows": 100000,
+    "max_estimated_cost": 50000,
+    "on_exceed": "reject_and_suggest"
+  },
+  
+  "self_correction": {
+    "enabled": true,
+    "max_retries": 1,
+    "include_error_context": true,
+    "include_available_columns": true
+  },
+  
+  "transparency": {
+    "show_sql_to_user": true,
+    "show_retries_to_user": true,
+    "show_errors_to_user": true,
+    "show_status_messages": true,
+    "use_collapsible_details": true
+  },
+  
+  "rate_limiting": {
+    "enabled": true,
+    "requests_per_minute_per_user": 10,
+    "requests_per_minute_global": 50
+  },
+  
+  "learning": {
+    "enabled": true,
+    "corrections_file": "data/learned_corrections.jsonl",
+    "max_corrections": 100,
+    "include_in_prompt": true,
+    "max_corrections_in_prompt": 20,
+    "eviction_policy": "least_recently_matched"
+  },
+  
+  "audit": {
+    "enabled": true,
+    "directory": "data/audit",
+    "rotation": "daily",
+    "retention_days": 90,
+    "log_user_questions": true,
+    "log_generated_sql": true,
+    "log_results": false,
+    "log_row_counts": true,
+    "log_latency": true
+  },
+  
+  "health": {
+    "check_interval_seconds": 60,
+    "database_ping": true,
+    "ollama_ping": true,
+    "schema_max_age_hours": 6,
+    "schema_auto_refresh": true
+  }
+}

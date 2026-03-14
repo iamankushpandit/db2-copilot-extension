@@ -1,0 +1,21 @@
+{
+  "admin_ui": {
+    "enabled": true,
+    "path": "/admin",
+    "allowed_github_users": ["ankush", "admin2"],
+    "session_timeout_hours": 24,
+    "port": 8080
+  },
+  
+  "database": {
+    "type": "postgres",
+    "connection_string_env": "DATABASE_URL",
+    "read_only_enforce": true
+  },
+
+  "oauth": {
+    "client_id_env": "GITHUB_APP_CLIENT_ID",
+    "client_secret_env": "GITHUB_APP_CLIENT_SECRET",
+    "fqdn_env": "FQDN"
+  }
+}

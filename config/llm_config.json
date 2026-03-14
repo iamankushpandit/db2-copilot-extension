@@ -1,0 +1,34 @@
+{
+  "sql_generator": {
+    "provider": "ollama",
+    "ollama": {
+      "url": "http://localhost:11434",
+      "model": "sqlcoder:7b",
+      "timeout_seconds": 15,
+      "temperature": 0.0,
+      "auto_pull": true
+    },
+    "copilot": {
+      "model": "gpt-4o"
+    }
+  },
+  
+  "explainer": {
+    "provider": "copilot",
+    "ollama": {
+      "url": "http://localhost:11434",
+      "model": "llama3.1:8b",
+      "timeout_seconds": 30,
+      "temperature": 0.3
+    },
+    "copilot": {
+      "model": "gpt-4o"
+    }
+  },
+  
+  "fallback": {
+    "enabled": true,
+    "sql_generator_fallback": "copilot",
+    "explainer_fallback": "copilot"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "terms": [
+    {
+      "term": "revenue",
+      "definition": "SUM(orders.total_amount) - refers to the total_amount column in the orders table, not a standalone column",
+      "added_by": "admin_username",
+      "added_at": "2026-03-14T10:00:00Z"
+    },
+    {
+      "term": "churn",
+      "definition": "An account with status='cancelled' and cancelled_at within the last 90 days",
+      "added_by": "admin_username",
+      "added_at": "2026-03-14T10:00:00Z"
+    },
+    {
+      "term": "last quarter",
+      "definition": "The most recently completed fiscal quarter. Fiscal year starts in April. So in March 2026, last quarter = Oct 1 2025 to Dec 31 2025",
+      "added_by": "admin_username",
+      "added_at": "2026-03-14T10:00:00Z"
+    }
+  ]
+}

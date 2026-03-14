@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/json"
@@ -9,11 +10,15 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/iamankushpandit/db2-copilot-extension/agent"
+	"github.com/iamankushpandit/db2-copilot-extension/audit"
 	"github.com/iamankushpandit/db2-copilot-extension/config"
-	"github.com/iamankushpandit/db2-copilot-extension/db2"
 	"github.com/iamankushpandit/db2-copilot-extension/oauth"
+	"github.com/iamankushpandit/db2-copilot-extension/database"
+	"github.com/iamankushpandit/db2-copilot-extension/postgres"
 )
 
 const publicKeysURL = "https://api.github.com/meta/public_keys/copilot_api"
@@ -27,9 +32,27 @@ type publicKeysResponse struct {
 }
 
 func main() {
-	cfg, err := config.New()
-	if err != nil {
+	if err := config.LoadAll("config"); err != nil {
 		log.Fatalf("FATAL configuration error: %v", err)
+	}
+	cfg := config.Get()
+
+	if err := audit.Init(&cfg.Safety.Audit); err != nil {
+		log.Fatalf("FATAL audit logger initialization error: %v", err)
+	}
+	defer audit.Close()
+
+	audit.Log(audit.SystemStart, audit.SystemStartPayload{ConfigSummary: "TODO"})
+
+	dbClient, err := initDB(cfg.Admin.Database)
+	if err != nil {
+		log.Fatalf("FATAL database initialization error: %v", err)
+	}
+	defer dbClient.Close()
+
+	sqlGenerator, explainer, err := initLLMProviders(cfg.LLM)
+	if err != nil {
+		log.Fatalf("FATAL LLM provider initialization error: %v", err)
 	}
 
 	publicKey, err := fetchPublicKey()
@@ -38,19 +61,8 @@ func main() {
 	}
 	log.Println("INFO fetched GitHub Copilot public key")
 
-	db2Client, err := db2.NewClient(cfg.DB2ConnStr)
-	if err != nil {
-		log.Fatalf("FATAL could not create DB2 client: %v", err)
-	}
-	defer func() {
-		if err := db2Client.Close(); err != nil {
-			log.Printf("WARN closing DB2 client: %v", err)
-		}
-	}()
-	log.Println("INFO DB2 client initialised")
-
-	agentSvc := agent.NewService(db2Client, publicKey)
-	oauthSvc := oauth.NewService(cfg.ClientID, cfg.ClientSecret, cfg.FQDN)
+	agentSvc := agent.NewService(dbClient, publicKey, sqlGenerator, explainer)
+	oauthSvc := oauth.NewService(os.Getenv(cfg.Admin.OAuth.ClientIDEnv), os.Getenv(cfg.Admin.OAuth.ClientSecretEnv), os.Getenv(cfg.Admin.OAuth.FQDNEnv))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /agent", agentSvc.ChatCompletion)
@@ -58,12 +70,77 @@ func main() {
 	mux.HandleFunc("GET /auth/callback", oauthSvc.PostAuth)
 	mux.HandleFunc("GET /health", healthHandler)
 
-	addr := ":" + cfg.Port
+	addr := fmt.Sprintf(":%d", cfg.Admin.AdminUI.Port)
 	log.Printf("INFO starting server on %s", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("FATAL server error: %v", err)
 	}
 }
+
+func initLLMProviders(cfg *config.LLMConfig) (llm.TextToSQLProvider, llm.ExplanationProvider, error) {
+	var sqlGenerator llm.TextToSQLProvider
+	var explainer llm.ExplanationProvider
+	var err error
+
+	// TODO: Implement Ollama and fallback
+	switch cfg.SQLGenerator.Provider {
+	case "copilot":
+		sqlGenerator = llm.NewCopilotProvider()
+	default:
+		return nil, nil, fmt.Errorf("unsupported SQL generator provider: %s", cfg.SQLGenerator.Provider)
+	}
+
+	switch cfg.Explainer.Provider {
+	case "copilot":
+		explainer = llm.NewCopilotProvider()
+	default:
+		return nil, nil, fmt.Errorf("unsupported explainer provider: %s", cfg.Explainer.Provider)
+	}
+
+	return sqlGenerator, explainer, err
+}
+
+func initDB(cfg config.Database) (database.Client, error) {
+	connStr := os.Getenv(cfg.ConnectionStringEnv)
+	if connStr == "" {
+		return nil, fmt.Errorf("database connection string environment variable not set: %s", cfg.ConnectionStringEnv)
+	}
+
+	var client database.Client
+	var err error
+
+	switch cfg.Type {
+	case "postgres":
+		log.Println("INFO initialising postgres client")
+		client, err = postgres.NewClient(connStr)
+	case "db2":
+		err = fmt.Errorf("db2 client not implemented yet") // TODO: implement
+	default:
+		err = fmt.Errorf("unsupported database type: %s", cfg.Type)
+	}
+
+	if err != nil {
+		audit.Log(audit.DBConnectionFailed, map[string]string{"error": err.Error()})
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Ping(ctx); err != nil {
+		audit.Log(audit.DBConnectionFailed, map[string]string{"error": err.Error()})
+		return nil, fmt.Errorf("pinging database: %w", err)
+	}
+	audit.Log(audit.DBConnectionOK, nil)
+
+	if err := client.VerifyReadOnly(); err != nil {
+		// This is a warning, not a fatal error
+		log.Printf("WARN read-only verification failed: %v", err)
+	}
+
+	return client, nil
+}
+
 
 // healthHandler returns a simple 200 OK response.
 func healthHandler(w http.ResponseWriter, _ *http.Request) {

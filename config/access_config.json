@@ -1,0 +1,51 @@
+{
+  "version": "1.0",
+  "last_modified_by": "admin_username",
+  "last_modified_at": "2026-03-14T10:00:00Z",
+  
+  "approved_schemas": [
+    {
+      "schema": "public",
+      "approved_by": "admin_username",
+      "approved_at": "2026-03-14T10:00:00Z",
+      "reason": "Core business tables",
+      "access_level": "partial",
+      
+      "approved_tables": [
+        {
+          "table": "customers",
+          "approved_by": "admin_username",
+          "approved_at": "2026-03-14T10:00:00Z",
+          "reason": "Sales team needs customer lookup",
+          "access_level": "partial",
+          "approved_columns": ["id", "name", "email", "company", "region", "created_at", "status"],
+          "denied_columns": ["ssn", "credit_card", "date_of_birth"],
+          "denied_reason": "PII columns excluded per compliance policy"
+        },
+        {
+          "table": "orders",
+          "approved_by": "admin_username",
+          "approved_at": "2026-03-14T10:00:00Z",
+          "reason": "Revenue reporting",
+          "access_level": "full"
+        }
+      ]
+    },
+    {
+      "schema": "analytics",
+      "approved_by": "admin_username",
+      "approved_at": "2026-03-14T10:05:00Z",
+      "reason": "Pre-aggregated views, safe for all users",
+      "access_level": "full"
+    }
+  ],
+  
+  "hidden_schemas": [
+    {
+      "schema": "security",
+      "reason": "Auth infrastructure - do not recommend to users",
+      "hidden_by": "admin_username",
+      "hidden_at": "2026-03-14T10:00:00Z"
+    }
+  ]
+}
