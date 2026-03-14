@@ -209,12 +209,11 @@ func formatMarkdownTable(results []map[string]interface{}) string {
 
 	// Separator row
 	sb.WriteString("| ")
+	seps := make([]string, len(columns))
 	for i, col := range columns {
-		sb.WriteString(strings.Repeat("-", len(col)))
-		if i < len(columns)-1 {
-			sb.WriteString(" | ")
-		}
+		seps[i] = strings.Repeat("-", max(len(col), 3))
 	}
+	sb.WriteString(strings.Join(seps, " | "))
 	sb.WriteString(" |\n")
 
 	// Data rows

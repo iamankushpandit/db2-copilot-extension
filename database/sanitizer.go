@@ -47,7 +47,7 @@ func SanitizeSQL(query string, dbType string) (string, error) {
 		return "", fmt.Errorf("multiple SQL statements are not allowed")
 	}
 
-	// Normalise to uppercase for keyword checks
+	// Normalize to uppercase for keyword checks
 	upper := strings.ToUpper(query)
 
 	// Must start with SELECT
