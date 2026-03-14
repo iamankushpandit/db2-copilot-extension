@@ -1,0 +1,63 @@
+{{template "base" .}}
+{{define "content"}}
+<p style="color:#6e7781;margin-bottom:20px">
+  Define business terms that help the LLM understand domain-specific language in user questions.
+</p>
+
+<div class="card">
+  <h2 style="margin-top:0">Add New Term</h2>
+  <form method="POST" action="/admin/glossary">
+    <input type="hidden" name="action" value="add">
+    <div style="display:grid;grid-template-columns:1fr 2fr auto;gap:12px;align-items:end">
+      <div class="form-row" style="margin:0">
+        <label>Term</label>
+        <input type="text" name="term" placeholder="e.g. revenue" required>
+      </div>
+      <div class="form-row" style="margin:0">
+        <label>Definition</label>
+        <input type="text" name="definition" placeholder="e.g. SUM(orders.total_amount)" required>
+      </div>
+      <div>
+        <button class="btn btn-primary" type="submit">Add Term</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Current Terms ({{len .Glossary.Terms}})</h2>
+  {{if .Glossary.Terms}}
+  <table>
+    <thead>
+      <tr>
+        <th style="width:20%">Term</th>
+        <th>Definition</th>
+        <th style="width:15%">Added By</th>
+        <th style="width:15%">Added At</th>
+        <th style="width:80px">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range $i, $term := .Glossary.Terms}}
+    <tr>
+      <td><strong>{{$term.Term}}</strong></td>
+      <td>{{$term.Definition}}</td>
+      <td>{{$term.AddedBy}}</td>
+      <td>{{$term.AddedAt.Format "2006-01-02"}}</td>
+      <td>
+        <form method="POST" action="/admin/glossary">
+          <input type="hidden" name="action" value="remove">
+          <input type="hidden" name="index" value="{{$i}}">
+          <button class="btn btn-danger btn-sm" type="submit"
+            onclick="return confirm('Remove term \'{{$term.Term}}\'?')">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p style="color:#6e7781;margin:0">No terms defined yet. Add terms above to help the LLM understand your business language.</p>
+  {{end}}
+</div>
+{{end}}

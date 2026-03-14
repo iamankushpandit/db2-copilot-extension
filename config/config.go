@@ -18,19 +18,23 @@ type Config struct {
 	DatabaseURL string
 	// ConfigDir is the directory that contains the JSON config files (default: "config").
 	ConfigDir string
+	// AdminSessionSecret is used to sign admin session cookies.
+	// If empty a random secret is generated at startup (sessions won't survive restarts).
+	AdminSessionSecret string
 }
 
 // New reads configuration from environment variables and validates that all
 // required fields are present.
 func New() (*Config, error) {
 	cfg := &Config{
-		Port:         getEnvOrDefault("PORT", "8080"),
-		ClientID:     os.Getenv("CLIENT_ID"),
-		ClientSecret: os.Getenv("CLIENT_SECRET"),
-		FQDN:         os.Getenv("FQDN"),
-		DB2ConnStr:   os.Getenv("DB2_CONN_STRING"),
-		DatabaseURL:  os.Getenv("DATABASE_URL"),
-		ConfigDir:    getEnvOrDefault("CONFIG_DIR", "config"),
+		Port:               getEnvOrDefault("PORT", "8080"),
+		ClientID:           os.Getenv("CLIENT_ID"),
+		ClientSecret:       os.Getenv("CLIENT_SECRET"),
+		FQDN:               os.Getenv("FQDN"),
+		DB2ConnStr:         os.Getenv("DB2_CONN_STRING"),
+		DatabaseURL:        os.Getenv("DATABASE_URL"),
+		ConfigDir:          getEnvOrDefault("CONFIG_DIR", "config"),
+		AdminSessionSecret: os.Getenv("ADMIN_SESSION_SECRET"),
 	}
 
 	if cfg.ClientID == "" {

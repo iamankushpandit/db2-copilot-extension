@@ -417,6 +417,114 @@ Every incoming request is verified to originate from GitHub using **ECDSA with S
 - 🔒 **Environment variables** — All secrets are loaded from environment (`.env` is gitignored)
 - 🔒 **Non-root Docker container** — The runtime container runs as `appuser` (UID 1001)
 
+### Read-Only Database User Setup
+
+For maximum safety, create a dedicated read-only database user for the connector. The connector enforces read-only access in code, but using a read-only DB user provides an additional layer of protection.
+
+#### PostgreSQL
+
+```sql
+-- Create a read-only role for the connector
+CREATE ROLE db_copilot_readonly;
+
+-- Grant CONNECT on the target database
+GRANT CONNECT ON DATABASE your_database TO db_copilot_readonly;
+
+-- Grant USAGE on the schemas you want to expose
+GRANT USAGE ON SCHEMA public TO db_copilot_readonly;
+GRANT USAGE ON SCHEMA analytics TO db_copilot_readonly;
+
+-- Grant SELECT on existing tables
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO db_copilot_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO db_copilot_readonly;
+
+-- Automatically grant SELECT on future tables
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT ON TABLES TO db_copilot_readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA analytics
+  GRANT SELECT ON TABLES TO db_copilot_readonly;
+
+-- Create the user and assign the role
+CREATE USER db_copilot WITH PASSWORD 'your-secure-password';
+GRANT db_copilot_readonly TO db_copilot;
+
+-- Enforce read-only at the session level (belt-and-suspenders)
+ALTER USER db_copilot SET default_transaction_read_only = on;
+```
+
+Connect using: `DATABASE_URL=postgres://db_copilot:your-secure-password@localhost:5432/your_database`
+
+#### IBM DB2
+
+```sql
+-- Create the read-only user at the OS level first (DB2 uses OS authentication)
+-- On Linux: sudo useradd -m db_copilot && sudo passwd db_copilot
+
+-- Connect to the database as an admin
+CONNECT TO your_database USER admin USING admin_password;
+
+-- Grant CONNECT privilege
+GRANT CONNECT ON DATABASE TO USER db_copilot;
+
+-- Grant SELECT on the schemas you want to expose
+GRANT SELECT ON TABLE schema1.customers TO USER db_copilot;
+GRANT SELECT ON TABLE schema1.orders TO USER db_copilot;
+-- Or grant SELECT on all tables in a schema:
+-- GRANT SELECT ON ALL TABLES IN SCHEMA public TO USER db_copilot;
+
+-- Grant access to the catalog views (needed for schema discovery)
+GRANT SELECT ON SYSIBM.SYSTABLES TO USER db_copilot;
+GRANT SELECT ON SYSCAT.TABLES TO USER db_copilot;
+GRANT SELECT ON SYSCAT.COLUMNS TO USER db_copilot;
+GRANT SELECT ON SYSCAT.REFERENCES TO USER db_copilot;
+GRANT SELECT ON SYSCAT.TABCOMMENTS TO USER db_copilot;
+GRANT SELECT ON SYSCAT.COLCOMMENTS TO USER db_copilot;
+```
+
+Connect using: `DB2_CONN_STRING=HOSTNAME=localhost;PORT=50000;DATABASE=your_database;UID=db_copilot;PWD=your-secure-password;PROTOCOL=TCPIP`
+
+> **Important:** Do not grant `INSERT`, `UPDATE`, `DELETE`, `ALTER`, or `DROP` privileges to the connector user. The connector will still refuse to execute write queries in code, but using a read-only user prevents accidental or malicious writes at the database level.
+
+---
+
+## Admin UI
+
+The connector includes a built-in admin interface at `/admin` for managing schema access, query limits, and LLM configuration.
+
+### Accessing the Admin UI
+
+1. Set at least one admin user in `config/admin_config.json`:
+   ```json
+   {
+     "admin_ui": {
+       "allowed_github_users": ["your-github-username"]
+     }
+   }
+   ```
+2. Navigate to `https://your-fqdn/admin`
+3. Sign in with your GitHub account
+4. Only users listed in `allowed_github_users` can access the admin panel
+
+### Admin Pages
+
+| Page | Path | Description |
+|------|------|-------------|
+| Dashboard | `/admin` | System health overview |
+| Schema Access | `/admin/schema` | Approve/deny schemas, tables, and columns |
+| Query Safety | `/admin/safety` | Row limits, cost thresholds, rate limits |
+| LLM Configuration | `/admin/llm` | SQL generation and explanation providers |
+| Business Glossary | `/admin/glossary` | Add domain-specific term definitions |
+| Database Settings | `/admin/database` | Connection status and configuration |
+
+### Admin Session Security
+
+- Sessions are signed with HMAC-SHA256 using the `ADMIN_SESSION_SECRET` environment variable
+- If `ADMIN_SESSION_SECRET` is not set, a random secret is generated at startup (sessions will not survive restarts)
+- For production deployments, always set `ADMIN_SESSION_SECRET` to a stable random value:
+  ```bash
+  ADMIN_SESSION_SECRET=$(openssl rand -hex 32)
+  ```
+
 ---
 
 ## Configuration Reference
@@ -427,7 +535,10 @@ Every incoming request is verified to originate from GitHub using **ECDSA with S
 | `CLIENT_ID` | GitHub App Client ID | — | **Yes** |
 | `CLIENT_SECRET` | GitHub App Client Secret | — | **Yes** |
 | `FQDN` | Public URL of the agent (no trailing slash) | — | **Yes** |
-| `DB2_CONN_STRING` | DB2 ODBC connection string | — | **Yes** |
+| `DB2_CONN_STRING` | DB2 ODBC connection string | — | Yes (DB2) |
+| `DATABASE_URL` | PostgreSQL connection string | — | Yes (PostgreSQL) |
+| `CONFIG_DIR` | Directory containing JSON config files | `config` | No |
+| `ADMIN_SESSION_SECRET` | Secret for signing admin session cookies | random | No (recommended) |
 
 ### DB2 Connection String Format
 

@@ -1,0 +1,178 @@
+{{template "base" .}}
+{{define "content"}}
+<p style="color:#6e7781;margin-bottom:16px">
+  Control which schemas, tables, and columns the agent can query.
+  Only approved items are exposed to the LLM.
+  Hidden schemas are never mentioned to users.
+</p>
+
+{{$access := .Access}}
+
+<div class="card">
+  <h2 style="margin-top:0">Approved Schemas</h2>
+  {{if .FullSchema}}
+  <table class="schema-table">
+    <thead>
+      <tr>
+        <th>Schema</th>
+        <th>Tables</th>
+        <th>Access Level</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range .FullSchema.Schemas}}
+      {{$schemaName := .Name}}
+      {{$isHidden := index $.HiddenSet $schemaName}}
+      {{$approvedSchema := index $.ApprovedSchemaMap $schemaName}}
+      <tr>
+        <td><strong>{{$schemaName}}</strong></td>
+        <td>{{len .Tables}} tables</td>
+        <td>
+          {{if $approvedSchema}}
+            {{$approvedSchema.AccessLevel}}
+          {{else}}—{{end}}
+        </td>
+        <td>
+          {{if $isHidden}}
+            <span class="badge badge-red">hidden</span>
+          {{else if $approvedSchema}}
+            <span class="badge badge-green">approved</span>
+          {{else}}
+            <span class="badge badge-gray">unapproved</span>
+          {{end}}
+        </td>
+        <td>
+          {{if not $approvedSchema}}
+          <form method="POST" action="/admin/schema" style="display:inline">
+            <input type="hidden" name="action" value="approve_schema">
+            <input type="hidden" name="schema" value="{{$schemaName}}">
+            <input type="hidden" name="access_level" value="full">
+            <button class="btn btn-primary btn-sm" type="submit">Approve (full)</button>
+          </form>
+          {{end}}
+          {{if $approvedSchema}}
+          <form method="POST" action="/admin/schema" style="display:inline">
+            <input type="hidden" name="action" value="deny_schema">
+            <input type="hidden" name="schema" value="{{$schemaName}}">
+            <button class="btn btn-danger btn-sm" type="submit">Remove</button>
+          </form>
+          {{end}}
+          {{if not $isHidden}}
+          <form method="POST" action="/admin/schema" style="display:inline">
+            <input type="hidden" name="action" value="hide_schema">
+            <input type="hidden" name="schema" value="{{$schemaName}}">
+            <button class="btn btn-sm" type="submit">Hide</button>
+          </form>
+          {{end}}
+          {{if $isHidden}}
+          <form method="POST" action="/admin/schema" style="display:inline">
+            <input type="hidden" name="action" value="unhide_schema">
+            <input type="hidden" name="schema" value="{{$schemaName}}">
+            <button class="btn btn-sm" type="submit">Unhide</button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+      {{if $approvedSchema}}
+      {{range .Tables}}
+      {{$tableName := .Name}}
+      {{$approvedTable := index $.ApprovedTableMap (printf "%s.%s" $schemaName $tableName)}}
+      <tr style="background:#fafbfc">
+        <td style="padding-left:32px;color:#6e7781">└ {{$tableName}}</td>
+        <td><span class="col-list">{{len .Columns}} cols</span></td>
+        <td>
+          {{if $approvedTable}}{{$approvedTable.AccessLevel}}{{else if eq $approvedSchema.AccessLevel "full"}}full (inherited){{else}}—{{end}}
+        </td>
+        <td>
+          {{if or $approvedTable (eq $approvedSchema.AccessLevel "full")}}
+            <span class="badge badge-green">approved</span>
+          {{else}}
+            <span class="badge badge-gray">unapproved</span>
+          {{end}}
+        </td>
+        <td>
+          {{if and (eq $approvedSchema.AccessLevel "partial") (not $approvedTable)}}
+          <form method="POST" action="/admin/schema" style="display:inline">
+            <input type="hidden" name="action" value="approve_table">
+            <input type="hidden" name="schema" value="{{$schemaName}}">
+            <input type="hidden" name="table" value="{{$tableName}}">
+            <input type="hidden" name="access_level" value="full">
+            <button class="btn btn-primary btn-sm" type="submit">Approve</button>
+          </form>
+          {{end}}
+          {{if $approvedTable}}
+          <form method="POST" action="/admin/schema" style="display:inline">
+            <input type="hidden" name="action" value="deny_table">
+            <input type="hidden" name="schema" value="{{$schemaName}}">
+            <input type="hidden" name="table" value="{{$tableName}}">
+            <button class="btn btn-danger btn-sm" type="submit">Remove</button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+      {{end}}
+      {{end}}
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p style="color:#6e7781">Schema not yet crawled. Restart the server or wait for the next auto-refresh.</p>
+  {{end}}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Approve New Schema (Partial Access)</h2>
+  <form method="POST" action="/admin/schema">
+    <input type="hidden" name="action" value="approve_schema">
+    <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end">
+      <div>
+        <label>Schema Name</label>
+        <input type="text" name="schema" placeholder="e.g. public" required>
+      </div>
+      <div>
+        <label>Access Level</label>
+        <select name="access_level">
+          <option value="full">full — all tables &amp; columns</option>
+          <option value="partial">partial — specific tables only</option>
+        </select>
+      </div>
+      <div>
+        <label>Reason</label>
+        <input type="text" name="reason" placeholder="Optional reason">
+      </div>
+      <div>
+        <button class="btn btn-primary" type="submit">Approve Schema</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Hidden Schemas</h2>
+  {{if $access.HiddenSchemas}}
+  <table>
+    <thead><tr><th>Schema</th><th>Reason</th><th>Hidden By</th><th>Actions</th></tr></thead>
+    <tbody>
+    {{range $access.HiddenSchemas}}
+    <tr>
+      <td>{{.Schema}}</td>
+      <td>{{.Reason}}</td>
+      <td>{{.HiddenBy}}</td>
+      <td>
+        <form method="POST" action="/admin/schema" style="display:inline">
+          <input type="hidden" name="action" value="unhide_schema">
+          <input type="hidden" name="schema" value="{{.Schema}}">
+          <button class="btn btn-sm" type="submit">Unhide</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p style="color:#6e7781;margin:0">No hidden schemas configured.</p>
+  {{end}}
+</div>
+{{end}}

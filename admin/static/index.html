@@ -1,0 +1,42 @@
+{{template "base" .}}
+{{define "content"}}
+<p style="color:#6e7781;margin-bottom:24px">Manage schema access, query limits, LLM providers, and business glossary for the DB Copilot connector.</p>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px">
+  <a href="/admin/schema" style="text-decoration:none">
+    <div class="card" style="cursor:pointer;transition:box-shadow .15s">
+      <div style="font-size:24px;margin-bottom:8px">🔐</div>
+      <div style="font-weight:600">Schema Access</div>
+      <div style="color:#6e7781;font-size:13px;margin-top:4px">Approve schemas, tables, and columns</div>
+    </div>
+  </a>
+  <a href="/admin/safety" style="text-decoration:none">
+    <div class="card" style="cursor:pointer">
+      <div style="font-size:24px;margin-bottom:8px">🛡️</div>
+      <div style="font-weight:600">Query Safety</div>
+      <div style="color:#6e7781;font-size:13px;margin-top:4px">Row limits, cost thresholds, rate limits</div>
+    </div>
+  </a>
+  <a href="/admin/llm" style="text-decoration:none">
+    <div class="card" style="cursor:pointer">
+      <div style="font-size:24px;margin-bottom:8px">🤖</div>
+      <div style="font-weight:600">LLM Configuration</div>
+      <div style="color:#6e7781;font-size:13px;margin-top:4px">SQL generation and explanation providers</div>
+    </div>
+  </a>
+  <a href="/admin/glossary" style="text-decoration:none">
+    <div class="card" style="cursor:pointer">
+      <div style="font-size:24px;margin-bottom:8px">📖</div>
+      <div style="font-weight:600">Business Glossary</div>
+      <div style="color:#6e7781;font-size:13px;margin-top:4px">Define business terms for the LLM</div>
+    </div>
+  </a>
+  <a href="/admin/database" style="text-decoration:none">
+    <div class="card" style="cursor:pointer">
+      <div style="font-size:24px;margin-bottom:8px">🗄️</div>
+      <div style="font-weight:600">Database</div>
+      <div style="color:#6e7781;font-size:13px;margin-top:4px">Connection status and settings</div>
+    </div>
+  </a>
+</div>
+{{end}}
