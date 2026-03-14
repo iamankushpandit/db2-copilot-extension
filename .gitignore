@@ -1,0 +1,35 @@
+# Compiled binaries
+/db2-copilot-extension
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+*.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories (not needed with Go modules)
+vendor/
+
+# Environment files — never commit real secrets
+.env
+
+# IDE / editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Docker build artifacts
+.dockerignore
+
+# Log files
+*.log
