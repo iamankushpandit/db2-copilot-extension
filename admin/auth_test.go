@@ -159,19 +159,20 @@ func TestStateCookieRoundTrip(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	setStateCookie(w, state)
+	r := httptest.NewRequest(http.MethodGet, "/admin/login", nil)
+	setStateCookie(w, r, state)
 
 	// Simulate reading the cookie back.
 	resp := w.Result()
-	r := httptest.NewRequest(http.MethodGet, "/admin/callback?state="+state, nil)
+	r2 := httptest.NewRequest(http.MethodGet, "/admin/callback?state="+state, nil)
 	for _, c := range resp.Cookies() {
-		r.AddCookie(c)
+		r2.AddCookie(c)
 	}
 
-	if !validateStateCookie(r, state) {
+	if !validateStateCookie(r2, state) {
 		t.Error("validateStateCookie should return true for matching state")
 	}
-	if validateStateCookie(r, "different-state") {
+	if validateStateCookie(r2, "different-state") {
 		t.Error("validateStateCookie should return false for mismatched state")
 	}
 }

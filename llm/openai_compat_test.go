@@ -205,8 +205,10 @@ func TestOpenAICompatProvider_ExplainResults_WriterError(t *testing.T) {
 	}
 }
 
+// errorWriter implements io.Writer and always returns an error.
+// It is used in tests to verify that write errors are propagated correctly.
 type errorWriter struct{}
 
-func (errorWriter) Write([]byte) (int, error) {
+func (errorWriter) Write(_ []byte) (int, error) {
 	return 0, io.ErrClosedPipe
 }

@@ -614,6 +614,9 @@ func (s *Service) handleDatabase(w http.ResponseWriter, r *http.Request) {
 func parseInt(r *http.Request, name string, fallback int) int {
 	v, err := strconv.Atoi(r.FormValue(name))
 	if err != nil || v < 0 {
+		if r.FormValue(name) != "" {
+			log.Printf("WARN admin: ignoring invalid value %q for field %q, using %d", r.FormValue(name), name, fallback)
+		}
 		return fallback
 	}
 	return v

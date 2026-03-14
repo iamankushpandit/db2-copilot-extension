@@ -85,7 +85,7 @@ func (a *AuthService) RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
 // HandleLogin initiates the GitHub OAuth flow for admin access.
 func (a *AuthService) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	state := randomState()
-	setStateCookie(w, state)
+	setStateCookie(w, r, state)
 
 	params := url.Values{}
 	params.Set("client_id", a.clientID)
@@ -104,7 +104,7 @@ func (a *AuthService) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid or missing state parameter (possible CSRF)", http.StatusBadRequest)
 		return
 	}
-	clearStateCookie(w)
+	clearStateCookie(w, r)
 
 	code := r.URL.Query().Get("code")
 	if code == "" {
@@ -141,7 +141,7 @@ func (a *AuthService) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set session cookie.
-	if err := a.setSession(w, username, adminCfg.AdminUI.SessionTimeoutHours); err != nil {
+	if err := a.setSession(w, r, username, adminCfg.AdminUI.SessionTimeoutHours); err != nil {
 		http.Error(w, "Failed to create session", http.StatusInternalServerError)
 		return
 	}
@@ -152,11 +152,11 @@ func (a *AuthService) HandleCallback(w http.ResponseWriter, r *http.Request) {
 // HandleLogout clears the session cookie and redirects to the login page.
 func (a *AuthService) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
-		Name:    sessionCookieName,
-		Value:   "",
-		Path:    "/admin",
-		MaxAge:  -1,
-		Secure:  r.TLS != nil,
+		Name:     sessionCookieName,
+		Value:    "",
+		Path:     "/admin",
+		MaxAge:   -1,
+		Secure:   r.TLS != nil,
 		HttpOnly: true,
 	})
 	http.Redirect(w, r, "/admin/login", http.StatusFound)
@@ -187,7 +187,7 @@ func (a *AuthService) sessionUsername(r *http.Request) (string, bool) {
 	return payload.Username, true
 }
 
-func (a *AuthService) setSession(w http.ResponseWriter, username string, timeoutHours int) error {
+func (a *AuthService) setSession(w http.ResponseWriter, r *http.Request, username string, timeoutHours int) error {
 	if timeoutHours <= 0 {
 		timeoutHours = 24
 	}
@@ -205,6 +205,7 @@ func (a *AuthService) setSession(w http.ResponseWriter, username string, timeout
 		Path:     "/admin",
 		MaxAge:   timeoutHours * 3600,
 		HttpOnly: true,
+		Secure:   r.TLS != nil,
 		SameSite: http.SameSiteLaxMode,
 	})
 	return nil
@@ -335,13 +336,14 @@ func randomState() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func setStateCookie(w http.ResponseWriter, state string) {
+func setStateCookie(w http.ResponseWriter, r *http.Request, state string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     stateCookieName,
 		Value:    state,
 		Path:     "/admin",
 		MaxAge:   300, // 5 minutes
 		HttpOnly: true,
+		Secure:   r.TLS != nil,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -354,11 +356,13 @@ func validateStateCookie(r *http.Request, state string) bool {
 	return hmac.Equal([]byte(cookie.Value), []byte(state))
 }
 
-func clearStateCookie(w http.ResponseWriter) {
+func clearStateCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
-		Name:   stateCookieName,
-		Value:  "",
-		Path:   "/admin",
-		MaxAge: -1,
+		Name:     stateCookieName,
+		Value:    "",
+		Path:     "/admin",
+		MaxAge:   -1,
+		Secure:   r.TLS != nil,
+		HttpOnly: true,
 	})
 }

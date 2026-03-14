@@ -51,6 +51,9 @@ type CopilotProviderConfig struct {
 
 // OpenAICompatConfig holds connection settings for an OpenAI-compatible API server
 // such as vLLM, LocalAI, LM Studio, or any service that speaks the OpenAI format.
+// The default URL (http://localhost:8000/v1) matches vLLM's default bind address.
+// The default SQL generator model ("sqlcoder") matches the Defog/sqlcoder family of
+// code models commonly deployed on vLLM for text-to-SQL tasks.
 type OpenAICompatConfig struct {
 	// URL is the base URL of the OpenAI-compatible server, e.g. "http://localhost:8000/v1".
 	URL string `json:"url"`
