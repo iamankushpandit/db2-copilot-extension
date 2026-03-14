@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  # ─── Copilot Extension Agent ───────────────────────────────────────────────
+  agent:
+    build: .
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      PORT: "${PORT:-8080}"
+      CLIENT_ID: "${CLIENT_ID}"
+      CLIENT_SECRET: "${CLIENT_SECRET}"
+      FQDN: "${FQDN}"
+      DB_TYPE: "${DB_TYPE:-postgres}"
+      DB2_CONN_STRING: "${DB2_CONN_STRING:-}"
+      POSTGRES_CONN_STRING: "${POSTGRES_CONN_STRING:-postgres://postgres:password@postgres:5432/sample?sslmode=disable}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── PostgreSQL (optional - for local dev / testing) ──────────────────────
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: sample
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:

@@ -1,0 +1,25 @@
+# Binaries
+db2-copilot-extension
+*.exe
+*.out
+
+# Environment
+.env
+*.env.local
+
+# Build artifacts
+/dist/
+/bin/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
