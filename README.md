@@ -1,9 +1,10 @@
-# DB2 Copilot Extension
+# DB Copilot Connector
 
-> A GitHub Copilot Extension (agent) that connects to IBM DB2 databases, enabling users to query DB2 using natural language directly from GitHub Copilot Chat or Microsoft Teams.
+> A production-grade GitHub Copilot Extension that connects to **IBM DB2** or **PostgreSQL** databases, allowing users to ask natural language questions and get SQL-powered answers — directly from GitHub Copilot Chat or Microsoft Teams.
 
 [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-supported-336791?logo=postgresql)](https://www.postgresql.org)
 [![IBM DB2](https://img.shields.io/badge/IBM-DB2-054ADA?logo=ibm)](https://www.ibm.com/products/db2)
 
 ---
@@ -11,43 +12,61 @@
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Prerequisites](#prerequisites)
-4. [Project Structure](#project-structure)
-5. [Setup and Installation](#setup-and-installation)
+2. [Key Features](#key-features)
+3. [Architecture](#architecture)
+4. [Prerequisites](#prerequisites)
+5. [Project Structure](#project-structure)
+6. [Setup and Installation](#setup-and-installation)
    - [Step 1: Clone the repository](#step-1-clone-the-repository)
-   - [Step 2: Install IBM DB2 Driver](#step-2-install-ibm-db2-driver)
+   - [Step 2: Install database driver](#step-2-install-database-driver)
    - [Step 3: Create a GitHub App](#step-3-create-a-github-app)
-   - [Step 4: Configure Environment Variables](#step-4-configure-environment-variables)
+   - [Step 4: Configure environment variables](#step-4-configure-environment-variables)
    - [Step 5: Start ngrok (local development)](#step-5-start-ngrok-local-development)
-   - [Step 6: Run the Application](#step-6-run-the-application)
-6. [Usage](#usage)
-7. [Using with Microsoft Teams](#using-with-microsoft-teams)
-8. [Security](#security)
-9. [Configuration Reference](#configuration-reference)
-10. [Development](#development)
-11. [Troubleshooting](#troubleshooting)
-12. [Contributing](#contributing)
-13. [License](#license)
+   - [Step 6: Run the application](#step-6-run-the-application)
+7. [Configuration](#configuration)
+   - [Environment variables](#environment-variables)
+   - [JSON config files](#json-config-files)
+8. [Usage](#usage)
+9. [Using with Microsoft Teams](#using-with-microsoft-teams)
+10. [Admin UI](#admin-ui)
+11. [Security](#security)
+    - [Read-only database user setup (PostgreSQL)](#postgresql)
+    - [Read-only database user setup (IBM DB2)](#ibm-db2)
+12. [Health Monitoring](#health-monitoring)
+13. [Audit Logging](#audit-logging)
+14. [Development](#development)
+15. [Troubleshooting](#troubleshooting)
+16. [Contributing](#contributing)
+17. [License](#license)
 
 ---
 
 ## Overview
 
-The **DB2 Copilot Extension** brings natural language querying of IBM DB2 databases directly into GitHub Copilot Chat. Instead of writing SQL by hand, you simply ask questions in plain English:
+The **DB Copilot Connector** brings natural language querying of databases directly into GitHub Copilot Chat. Instead of writing SQL by hand, you simply ask questions in plain English:
 
 ```
-@db2-agent What are the top 10 customers by total order value?
-@db2-agent Show me all orders placed last month
-@db2-agent How many employees are in each department?
+@db-copilot What are the top 10 customers by total order value?
+@db-copilot Show me all orders placed last month
+@db-copilot How many employees are in each department?
 ```
 
-The extension automatically:
-1. Reads your DB2 schema to give the LLM context
-2. Translates your question into a DB2-compatible SQL query using GitHub Copilot's LLM
-3. Sanitizes the generated SQL (SELECT-only enforcement, injection prevention)
-4. Executes the query against your DB2 database
-5. Streams the formatted results and a plain-English explanation back to you
+The connector automatically:
+
+1. Discovers your database schema (with two-tier awareness — full internal view, admin-approved external view)
+2. Translates your question into SQL using a configurable LLM provider (Ollama, GitHub Copilot, or any OpenAI-compatible API)
+3. Validates the generated SQL against the approved schema and sanitizes it (SELECT-only enforcement)
+4. Checks query cost via `EXPLAIN` to prevent expensive queries
+5. Executes the query with injected row limits
+6. Detects the result shape and computes summary statistics
+7. Explains the results in plain English via a second LLM call
+8. Streams everything back to the user via SSE with real-time status messages
+
+If the first query fails, the connector self-corrects with contextual error information and retries once — then saves the correction for future queries.
+
+**Supported databases:** PostgreSQL, IBM DB2 (one database per deployment)
+
+**Supported LLM providers:** Ollama (local), GitHub Copilot, OpenAI-compatible APIs — with automatic fallback
 
 **Where you can use it:**
 - **GitHub Copilot Chat** at [github.com/copilot](https://github.com/copilot) — mention `@your-agent-name`
@@ -55,77 +74,103 @@ The extension automatically:
 
 ---
 
+## Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Dual database support** | PostgreSQL and IBM DB2 via a unified `database.Client` interface |
+| **Multi-LLM providers** | Ollama, GitHub Copilot, and OpenAI-compatible APIs with configurable fallback |
+| **Two-tier schema awareness** | Full internal awareness (Tier 1) for recommendations; admin-approved subset (Tier 2) exposed to the LLM |
+| **Post-generation SQL validation** | Every generated query is verified against the approved schema before execution |
+| **EXPLAIN cost estimation** | Queries exceeding configurable row/cost thresholds are rejected with suggestions |
+| **3-tier result limiting** | Database-level LIMIT injection → display-row cap → summary statistics from all rows |
+| **Self-correction loop** | On SQL errors, the connector retries once with error context and column hints |
+| **Learned corrections** | Successful corrections are saved and included in future prompts (rolling window with LRU eviction) |
+| **Business glossary** | Admin-defined term mappings (e.g., "revenue" → `SUM(orders.total_amount)`) injected into prompts |
+| **Real-time status streaming** | SSE status messages during pipeline execution (searching schema, generating SQL, running query…) |
+| **Rate limiting** | Per-user and global request rate limits |
+| **Admin UI** | Built-in web interface for schema access control, query safety, LLM config, and glossary management |
+| **Hot-reload configuration** | All 5 JSON config files are watched for changes and reloaded automatically |
+| **Audit logging** | Append-only JSONL audit trail with daily rotation — every query, validation, and error is logged |
+| **Health monitoring** | Periodic background checks on database, LLM, and schema freshness; detailed `/health` endpoint |
+| **Graceful shutdown** | Waits up to 30 seconds for in-flight requests on SIGTERM/SIGINT |
+| **Request signature verification** | ECDSA verification of GitHub-signed payloads |
+
+---
+
 ## Architecture
 
-### Request Flow
-
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│  User (GitHub Copilot Chat / Microsoft Teams)                        │
-│                                                                      │
-│  @db2-agent "show me all orders from last month"                     │
-└──────────────────────────────┬───────────────────────────────────────┘
-                               │  HTTPS POST
-                               ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│  GitHub Copilot Platform                                             │
-│  • Authenticates the user                                            │
-│  • Forwards message to agent server with JWT + signature             │
-└──────────────────────────────┬───────────────────────────────────────┘
-                               │  HTTPS POST /agent
-                               ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│  Agent Server  (this project)                                        │
-│                                                                      │
-│  1. Verify ECDSA request signature (GitHub public key)               │
-│  2. Fetch DB2 schema from catalog (SYSCAT.COLUMNS) — cached          │
-│  3. Build system prompt with schema context                          │
-│  4. Call Copilot LLM (non-streaming) → get SQL in <sql> tags         │
-│  5. Sanitize SQL (SELECT-only, no comments, no injection)            │
-│  6. Execute query on DB2 with 30-second timeout                      │
-│  7. Format results as markdown table                                 │
-│  8. Call Copilot LLM (streaming) → explain results                   │
-│  9. Stream explanation back via SSE                                  │
-└───────────────────┬──────────────────────────┬───────────────────────┘
-                    │  database/sql             │  HTTPS (Copilot API)
-                    ▼                           ▼
-         ┌──────────────────┐       ┌────────────────────────┐
-         │  IBM DB2         │       │  GitHub Copilot LLM    │
-         │  (TCPIP/ODBC)    │       │  (GPT-4)               │
-         └──────────────────┘       └────────────────────────┘
-```
-
-### Sequence Diagram
-
-```
-User          GitHub Platform      Agent Server        DB2       Copilot LLM
- │                 │                    │               │              │
- │──"top 10 customers"──►│              │               │              │
- │                 │──POST /agent──────►│               │              │
- │                 │                    │──schema info?─►│             │
- │                 │                    │◄──schema text──│             │
- │                 │                    │──build prompt──────────────►│
- │                 │                    │◄──SQL in <sql> tags─────────│
- │                 │                    │──sanitize SQL              │
- │                 │                    │──execute query─►│           │
- │                 │                    │◄──rows──────────│           │
- │                 │                    │──format results──────────►│
- │                 │                    │◄──SSE explanation stream───│
- │◄────────SSE stream──────────────────│               │              │
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        DB Copilot Connector                              │
+│                                                                          │
+│  HTTP Endpoints:                                                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐ │
+│  │ Admin UI     │  │ Agent        │  │ Health       │  │ OAuth       │ │
+│  │ /admin/*     │  │ POST /agent  │  │ GET /health  │  │ /auth/*     │ │
+│  └──────┬───────┘  └──────┬───────┘  └──────────────┘  └─────────────┘ │
+│         │                  │                                             │
+│         ▼                  ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │                    CORE PIPELINE                                 │    │
+│  │                                                                  │    │
+│  │  User Question                                                   │    │
+│  │    → Rate Limit Check                                            │    │
+│  │    → Build Approved Schema Context (Tier 2 only)                 │    │
+│  │    → Include Business Glossary + Learned Corrections             │    │
+│  │    → LLM 1: Text-to-SQL (Ollama / Copilot / OpenAI-compatible) │    │
+│  │    → Post-Generation Validation (all tables/columns approved?)   │    │
+│  │    → EXPLAIN Cost Check (reject if too expensive)                │    │
+│  │    → Execute Query (with injected LIMIT safety)                  │    │
+│  │    → Result Limiting (3-tier: DB cap → display → summary)       │    │
+│  │    → Detect Result Shape (scalar/single/small/large)            │    │
+│  │    → LLM 2: Explain Results (Copilot / Ollama / OpenAI-compat) │    │
+│  │    → Stream Response to User via SSE                             │    │
+│  │                                                                  │    │
+│  │  On Failure:                                                     │    │
+│  │    → Self-Correction Loop (max 1 retry with error context)       │    │
+│  │    → If still fails → human-readable error with suggestion       │    │
+│  │                                                                  │    │
+│  │  On Table Not Approved:                                          │    │
+│  │    → Check full awareness (Tier 1)                               │    │
+│  │    → If table exists but not approved → recommend to user        │    │
+│  │    → If table is in hidden list → say nothing about it           │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                  │
+│  │ Audit Logger │  │ Config Mgr   │  │ Health Check │                  │
+│  │ (JSONL daily)│  │ (hot-reload) │  │ (background) │                  │
+│  └──────────────┘  └──────────────┘  └──────────────┘                  │
+└─────────────────────────────────────────────────────────────────────────┘
+         │                                          │
+         ▼                                          ▼
+┌──────────────────┐                    ┌────────────────────────┐
+│  PostgreSQL      │                    │  LLM Provider          │
+│  — or —          │                    │  (Ollama / Copilot /   │
+│  IBM DB2         │                    │   OpenAI-compatible)   │
+└──────────────────┘                    └────────────────────────┘
 ```
 
-### Component Responsibilities
+### Startup Sequence
 
-| Component | File | Responsibility |
-|-----------|------|----------------|
-| HTTP Server | `main.go` | Routes, public key fetching, startup |
-| Agent | `agent/service.go` | Orchestration, signature verification, SSE streaming |
-| Copilot Client | `copilot/endpoints.go` | LLM API calls (streaming + non-streaming) |
-| Copilot Types | `copilot/messages.go` | Request/response type definitions |
-| DB2 Client | `db2/client.go` | Connection pool, query execution, schema introspection |
-| SQL Sanitizer | `db2/sanitizer.go` | Security layer — SELECT-only enforcement |
-| Configuration | `config/config.go` | Environment variable loading and validation |
-| OAuth | `oauth/service.go` | GitHub App OAuth flow |
+1. Load all config files from `CONFIG_DIR`. Validate JSON. If invalid → refuse to start.
+2. Connect to database. `SELECT 1` ping. If fails → refuse to start.
+3. Verify read-only: check user privileges and `default_transaction_read_only` (PostgreSQL). If write perms detected → log verbose warning with liability disclaimer, continue.
+4. Fetch GitHub Copilot public key for request signature verification.
+5. Check LLM provider. If Ollama: ping server, check model availability.
+6. Crawl full schema (Tier 1). Build approved subset (Tier 2). Cache both.
+7. Load learned corrections from `learned_corrections.jsonl`.
+8. Start background health checker and schema auto-refresh.
+9. Start HTTP server. Log ready message with full status summary.
+
+### Graceful Shutdown
+
+On SIGTERM/SIGINT:
+- Stop accepting new requests
+- Wait for in-flight requests to complete (up to 30 seconds)
+- Flush audit log buffer
+- Close database connection pool
+- Log shutdown summary
 
 ---
 
@@ -134,11 +179,12 @@ User          GitHub Platform      Agent Server        DB2       Copilot LLM
 | Requirement | Version | Notes |
 |-------------|---------|-------|
 | **Go** | 1.22+ | [download](https://go.dev/dl/) |
-| **IBM DB2** | Any | Local or remote instance |
-| **IBM DB2 CLI/ODBC driver** | Latest | Required for `go_ibm_db` (CGO) |
+| **PostgreSQL** | 12+ | *or* IBM DB2 — one database per deployment |
+| **IBM DB2** | Any | Required only if using DB2 (needs CGO + clidriver) |
 | **GitHub account** | — | Permissions to create GitHub Apps |
 | **ngrok** | Latest | For local development tunneling |
 | **Docker + Docker Compose** | Latest | Optional — for containerized deployment |
+| **Ollama** | Latest | Optional — for local LLM inference ([ollama.com](https://ollama.com)) |
 
 ---
 
@@ -146,33 +192,108 @@ User          GitHub Platform      Agent Server        DB2       Copilot LLM
 
 ```
 db2-copilot-extension/
-├── main.go                    # HTTP server setup, routes, public key fetching
-├── go.mod                     # Go module definition
-├── go.sum                     # Go module checksums
-├── Dockerfile                 # Multi-stage Docker build
-├── docker-compose.yml         # Docker Compose (agent + optional DB2 dev container)
-├── .env.example               # Example environment variables
-├── .gitignore                 # Go gitignore (excludes .env, binaries)
-├── README.md                  # This file
+├── main.go                        # HTTP server, startup sequence, graceful shutdown
+├── go.mod / go.sum                # Go module definition and checksums
+├── Dockerfile                     # Multi-stage Docker build (CGO + DB2 clidriver)
+├── docker-compose.yml             # Docker Compose (agent + optional DB2 dev container)
+├── .env.example                   # Example environment variables
+├── .gitignore                     # Excludes .env, binaries, runtime data
+├── README.md                      # This file
+├── prompt.md                      # Full build specification
 │
 ├── agent/
-│   └── service.go             # Core handler: signature verification, SQL orchestration, SSE streaming
-│
-├── copilot/
-│   ├── endpoints.go           # Copilot API client (POST to chat completions)
-│   └── messages.go            # Request/response types (ChatRequest, ChatMessage, etc.)
-│
-├── db2/
-│   ├── client.go              # DB2 connection pool, ExecuteQuery, GetSchemaInfo, FormatResults
-│   ├── driver_cgo.go          # CGO-gated IBM DB2 driver blank import
-│   ├── sanitizer.go           # SQL security layer (SELECT-only, injection prevention)
-│   └── sanitizer_test.go      # Unit tests for the SQL sanitizer
+│   └── service.go                 # Copilot agent handler: signature verification, pipeline dispatch
 │
 ├── config/
-│   └── config.go              # Environment variable loading and validation
+│   ├── config.go                  # Bootstrap config from environment variables
+│   ├── loader.go                  # Config file loading, validation, hot-reload with fsnotify
+│   ├── access.go                  # AccessConfig types and helpers
+│   ├── safety.go                  # SafetyConfig types (limits, cost, rate, health, audit)
+│   ├── llm.go                     # LLMConfig types (provider selection, model settings)
+│   ├── glossary.go                # GlossaryConfig types (business term definitions)
+│   ├── admin.go                   # AdminConfig types (UI settings, database type)
+│   └── config_test.go             # Config validation tests
 │
-└── oauth/
-    └── service.go             # GitHub OAuth pre-auth and callback handlers
+├── database/
+│   ├── interface.go               # database.Client interface (Ping, ExecuteQuery, CrawlSchema, etc.)
+│   ├── sanitizer.go               # SQL sanitizer (SELECT-only enforcement)
+│   ├── validator.go               # Post-generation SQL validation against approved schema
+│   ├── limiter.go                 # LIMIT injection and result row limiting
+│   ├── stats.go                   # Summary statistics computation (numeric, categorical)
+│   ├── sanitizer_test.go          # Sanitizer tests
+│   ├── validator_test.go          # Validator tests
+│   ├── limiter_test.go            # Limiter tests
+│   └── stats_test.go              # Stats tests
+│
+├── postgres/
+│   └── client.go                  # PostgreSQL database.Client implementation
+│
+├── db2/
+│   ├── client.go                  # IBM DB2 database.Client implementation
+│   ├── driver_cgo.go              # CGO-gated DB2 driver import (build tag)
+│   ├── sanitizer.go               # DB2-specific SQL sanitizer
+│   └── sanitizer_test.go          # DB2 sanitizer tests
+│
+├── schema/
+│   ├── crawler.go                 # Full schema discovery (Tier 1) with background auto-refresh
+│   ├── filter.go                  # Approved schema filtering (Tier 2)
+│   └── recommender.go             # Schema recommendation engine (suggest unapproved tables)
+│
+├── llm/
+│   ├── interface.go               # TextToSQLProvider + ExplanationProvider interfaces
+│   ├── ollama.go                  # Ollama implementation
+│   ├── copilot.go                 # GitHub Copilot implementation
+│   ├── openai_compat.go           # OpenAI-compatible API implementation
+│   ├── fallback.go                # Fallback wrapper (primary → secondary)
+│   ├── prompts.go                 # Prompt templates for SQL generation and explanation
+│   └── openai_compat_test.go      # OpenAI-compatible provider tests
+│
+├── pipeline/
+│   ├── executor.go                # Core pipeline orchestrator (the full query lifecycle)
+│   ├── learning.go                # Learned corrections store (rolling window, LRU eviction)
+│   ├── presenter.go               # Result shape detection and response formatting
+│   ├── ratelimit.go               # Per-user and global rate limiting
+│   ├── health.go                  # Periodic health checks and /health endpoint
+│   ├── presenter_test.go          # Presenter tests
+│   ├── ratelimit_test.go          # Rate limiter tests
+│   └── health_test.go             # Health checker tests
+│
+├── audit/
+│   ├── logger.go                  # Append-only JSONL audit logger with daily rotation
+│   └── events.go                  # Audit event type definitions
+│
+├── admin/
+│   ├── handler.go                 # Admin UI HTTP handlers
+│   ├── auth.go                    # Admin authentication (GitHub OAuth)
+│   ├── auth_test.go               # Admin auth tests
+│   └── static/                    # Embedded HTML/JS/CSS for admin UI
+│       ├── base.html              # Base layout template
+│       ├── index.html             # Dashboard
+│       ├── schema.html            # Schema access control
+│       ├── safety.html            # Query safety settings
+│       ├── llm.html               # LLM provider configuration
+│       ├── glossary.html          # Business glossary
+│       ├── database.html          # Database settings
+│       └── login.html             # Login page
+│
+├── copilot/
+│   ├── endpoints.go               # Copilot API client (existing)
+│   └── messages.go                # Copilot message types (existing)
+│
+├── oauth/
+│   └── service.go                 # OAuth service (existing)
+│
+├── config/                        # Runtime config files (auto-created on first run)
+│   ├── access_config.json         # Schema access control
+│   ├── query_safety.json          # Row limits, cost thresholds, rate limits
+│   ├── llm_config.json            # LLM provider selection and settings
+│   ├── glossary.json              # Business term definitions
+│   └── admin_config.json          # Admin UI settings and database type
+│
+└── data/                          # Runtime data (auto-created)
+    ├── audit/
+    │   └── audit-YYYY-MM-DD.jsonl # Daily audit log files
+    └── learned_corrections.jsonl  # Saved query corrections
 ```
 
 ---
@@ -186,53 +307,65 @@ git clone https://github.com/iamankushpandit/db2-copilot-extension.git
 cd db2-copilot-extension
 ```
 
-### Step 2: Install IBM DB2 Driver
+### Step 2: Install database driver
 
-The `go_ibm_db` Go package uses CGO and requires the **IBM DB2 CLI/ODBC driver (clidriver)** to be installed on your machine.
+#### PostgreSQL (recommended for quick start)
 
-#### Option A — macOS (Intel or Apple Silicon)
+No extra driver installation needed — the `lib/pq` driver is pure Go.
 
 ```bash
-# Install the clidriver via the go_ibm_db installer
+go mod tidy
+```
+
+#### IBM DB2
+
+The `go_ibm_db` Go package uses CGO and requires the **IBM DB2 CLI/ODBC driver (clidriver)**.
+
+<details>
+<summary><strong>macOS (Intel or Apple Silicon)</strong></summary>
+
+```bash
 go get github.com/ibmdb/go_ibm_db
 cd $(go env GOPATH)/pkg/mod/github.com/ibmdb/go_ibm_db*/installer
 go run setup.go
 
 # Set environment variables (add to ~/.zshrc or ~/.bash_profile)
-export IBM_DB_HOME=$HOME/Downloads/clidriver        # adjust to your install path
+export IBM_DB_HOME=$HOME/Downloads/clidriver
 export CGO_CFLAGS="-I$IBM_DB_HOME/include"
 export CGO_LDFLAGS="-L$IBM_DB_HOME/lib"
 export DYLD_LIBRARY_PATH=$IBM_DB_HOME/lib:$DYLD_LIBRARY_PATH
 ```
+</details>
 
-#### Option B — Linux (Ubuntu / Debian)
+<details>
+<summary><strong>Linux (Ubuntu / Debian)</strong></summary>
 
 ```bash
-# Install build dependencies
 sudo apt-get install -y gcc libxml2-dev
-
-# Download and run the go_ibm_db installer
 go get github.com/ibmdb/go_ibm_db
 cd $(go env GOPATH)/pkg/mod/github.com/ibmdb/go_ibm_db*/installer
 go run setup.go
 
 # Set environment variables (add to ~/.bashrc)
-export IBM_DB_HOME=$HOME/Downloads/clidriver        # adjust to your install path
+export IBM_DB_HOME=$HOME/Downloads/clidriver
 export CGO_CFLAGS="-I$IBM_DB_HOME/include"
 export CGO_LDFLAGS="-L$IBM_DB_HOME/lib"
 export LD_LIBRARY_PATH=$IBM_DB_HOME/lib:$LD_LIBRARY_PATH
 ```
+</details>
 
-#### Option C — Using Docker (recommended for quick start)
+<details>
+<summary><strong>Docker (recommended)</strong></summary>
 
-Skip this step entirely and use the Docker Compose setup in [Step 6](#step-6-run-the-application) — the `Dockerfile` handles the clidriver installation inside the container.
+Skip the driver installation entirely — the `Dockerfile` handles the clidriver installation inside the container. See [Step 6](#step-6-run-the-application).
+</details>
 
 ### Step 3: Create a GitHub App
 
 1. Go to **GitHub → Settings → Developer Settings → GitHub Apps → New GitHub App**
 
 2. Fill in the basic details:
-   - **GitHub App name**: `db2-agent` (or any name you prefer)
+   - **GitHub App name**: `db-copilot` (or any name you prefer)
    - **Homepage URL**: Your public URL (e.g., `https://your-ngrok-url.ngrok.app`)
    - **Callback URL**: `https://your-ngrok-url.ngrok.app/auth/callback`
    - Uncheck **"Expire user authorization tokens"** if you want persistent sessions
@@ -249,12 +382,12 @@ Skip this step entirely and use the Docker Compose setup in [Step 6](#step-6-run
 7. Click the **Copilot** tab in your app settings and fill in:
    - **Agent URL**: `https://your-ngrok-url.ngrok.app/agent`
    - **Pre-Authorization URL**: `https://your-ngrok-url.ngrok.app/auth/authorization`
-   - **Description**: `Query IBM DB2 databases using natural language`
+   - **Description**: `Query databases using natural language`
    - Click **Save**
 
 8. Install the app: go to `https://github.com/apps/<your-app-name>` and click **Install**
 
-### Step 4: Configure Environment Variables
+### Step 4: Configure environment variables
 
 ```bash
 cp .env.example .env
@@ -267,7 +400,22 @@ PORT=8080
 CLIENT_ID=Iv1.your_github_app_client_id
 CLIENT_SECRET=your_github_app_client_secret_here
 FQDN=https://abc123.ngrok.app
-DB2_CONN_STRING=HOSTNAME=localhost;PORT=50000;DATABASE=sample;UID=db2inst1;PWD=password;PROTOCOL=TCPIP
+
+# For PostgreSQL:
+DATABASE_URL=postgres://db_copilot:password@localhost:5432/mydb?sslmode=require
+
+# For IBM DB2 (set database.type to "db2" in config/admin_config.json):
+# DB2_CONN_STRING=HOSTNAME=localhost;PORT=50000;DATABASE=sample;UID=db2inst1;PWD=password;PROTOCOL=TCPIP
+```
+
+Set the database type in `config/admin_config.json` (auto-created on first run):
+
+```json
+{
+  "database": {
+    "type": "postgres"
+  }
+}
 ```
 
 ### Step 5: Start ngrok (local development)
@@ -280,38 +428,260 @@ Copy the **Forwarding** address (e.g., `https://abc123.ngrok.app`) and:
 - Update `FQDN` in your `.env` file
 - Update the **Agent URL**, **Callback URL**, and **Homepage URL** in your GitHub App settings
 
-### Step 6: Run the Application
+### Step 6: Run the application
 
 #### Option A — Direct Go run
 
 ```bash
-# Install dependencies
 go mod tidy
-
-# Run the server
 go run .
 ```
 
 You should see:
 ```
+INFO config loaded from config
+INFO connected to postgres database
+INFO read-only status verified
 INFO fetched GitHub Copilot public key
-INFO DB2 client initialised
-INFO starting server on :8080
+INFO schema crawled: 3 schemas, 12 tables, 87 columns in 245ms
+INFO learned corrections loaded
+INFO health checker started
+INFO server ready on :8080 (db=postgres, llm=ollama/sqlcoder:7b)
 ```
 
 #### Option B — Docker Compose
 
 ```bash
-# Start the agent + an optional local DB2 Community Edition instance
 docker-compose up --build
 ```
 
 > **Note**: The first startup of the DB2 container takes 2–5 minutes as it initializes the database.
 
-To use only the agent (connecting to an external DB2):
+To use only the agent (connecting to an external database):
 
 ```bash
 docker-compose up --build agent
+```
+
+---
+
+## Configuration
+
+### Environment variables
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `PORT` | Port the HTTP server listens on | `8080` | No |
+| `CLIENT_ID` | GitHub App Client ID | — | **Yes** |
+| `CLIENT_SECRET` | GitHub App Client Secret | — | **Yes** |
+| `FQDN` | Public URL of the agent (no trailing slash) | — | **Yes** |
+| `DATABASE_URL` | PostgreSQL connection string | — | Yes (PostgreSQL) |
+| `DB2_CONN_STRING` | DB2 ODBC connection string | — | Yes (DB2) |
+| `CONFIG_DIR` | Directory containing JSON config files | `config` | No |
+| `ADMIN_SESSION_SECRET` | Secret for signing admin session cookies | random | No (recommended) |
+
+#### DB2 connection string format
+
+```
+HOSTNAME=<host>;PORT=<port>;DATABASE=<dbname>;UID=<user>;PWD=<password>;PROTOCOL=TCPIP
+```
+
+| Component | Description | Example |
+|-----------|-------------|---------|
+| `HOSTNAME` | DB2 server IP or hostname | `db2.example.com` |
+| `PORT` | DB2 server port | `50000` |
+| `DATABASE` | Database name | `SAMPLE` |
+| `UID` | DB2 username | `db2readonly` |
+| `PWD` | DB2 password | `s3cr3t` |
+| `PROTOCOL` | Always `TCPIP` for network | `TCPIP` |
+
+### JSON config files
+
+All configuration lives in JSON files inside `CONFIG_DIR` (default: `config/`). Files are auto-created with defaults on first run. Changes are picked up automatically via file watcher with 2-second debounce — no restart required.
+
+#### 1. `access_config.json` — Schema Access Control
+
+Controls which schemas, tables, and columns the agent can query. The agent is internally aware of all schemas (Tier 1) but only exposes approved ones to the LLM (Tier 2).
+
+```json
+{
+  "version": "1.0",
+  "approved_schemas": [
+    {
+      "schema": "public",
+      "access_level": "partial",
+      "approved_tables": [
+        {
+          "table": "customers",
+          "access_level": "partial",
+          "approved_columns": ["id", "name", "email", "company", "region", "created_at", "status"],
+          "denied_columns": ["ssn", "credit_card"],
+          "denied_reason": "PII columns excluded per compliance policy"
+        },
+        {
+          "table": "orders",
+          "access_level": "full"
+        }
+      ]
+    }
+  ],
+  "hidden_schemas": [
+    {
+      "schema": "security",
+      "reason": "Auth infrastructure - do not recommend to users"
+    }
+  ]
+}
+```
+
+Access levels:
+- `"full"` on a schema = all tables and all columns approved (including future ones)
+- `"partial"` on a schema = only explicitly listed tables approved
+- `"full"` on a table = all columns approved
+- `"partial"` on a table = only `approved_columns` are queryable; `denied_columns` are invisible to the LLM
+
+#### 2. `query_safety.json` — Limits and Safety
+
+```json
+{
+  "query_limits": {
+    "max_query_rows": 100,
+    "display_rows": 10,
+    "compute_summary_stats": true,
+    "enforce_limit": true,
+    "query_timeout_seconds": 30
+  },
+  "cost_estimation": {
+    "explain_before_execute": true,
+    "max_estimated_rows": 100000,
+    "max_estimated_cost": 50000,
+    "on_exceed": "reject_and_suggest"
+  },
+  "self_correction": {
+    "enabled": true,
+    "max_retries": 1,
+    "include_error_context": true,
+    "include_available_columns": true
+  },
+  "transparency": {
+    "show_sql_to_user": true,
+    "show_retries_to_user": true,
+    "show_errors_to_user": true,
+    "show_status_messages": true,
+    "use_collapsible_details": true
+  },
+  "rate_limiting": {
+    "enabled": true,
+    "requests_per_minute_per_user": 10,
+    "requests_per_minute_global": 50
+  },
+  "learning": {
+    "enabled": true,
+    "corrections_file": "data/learned_corrections.jsonl",
+    "max_corrections": 100,
+    "include_in_prompt": true,
+    "max_corrections_in_prompt": 20,
+    "eviction_policy": "least_recently_matched"
+  },
+  "audit": {
+    "enabled": true,
+    "directory": "data/audit",
+    "rotation": "daily",
+    "retention_days": 90,
+    "log_user_questions": true,
+    "log_generated_sql": true,
+    "log_results": false,
+    "log_row_counts": true,
+    "log_latency": true
+  },
+  "health": {
+    "check_interval_seconds": 60,
+    "database_ping": true,
+    "ollama_ping": true,
+    "schema_max_age_hours": 6,
+    "schema_auto_refresh": true
+  }
+}
+```
+
+#### 3. `llm_config.json` — LLM Provider Configuration
+
+```json
+{
+  "sql_generator": {
+    "provider": "ollama",
+    "ollama": {
+      "url": "http://localhost:11434",
+      "model": "sqlcoder:7b",
+      "timeout_seconds": 15,
+      "temperature": 0.0,
+      "auto_pull": true
+    },
+    "copilot": {
+      "model": "gpt-4o"
+    }
+  },
+  "explainer": {
+    "provider": "copilot",
+    "ollama": {
+      "url": "http://localhost:11434",
+      "model": "llama3.1:8b",
+      "timeout_seconds": 30,
+      "temperature": 0.3
+    },
+    "copilot": {
+      "model": "gpt-4o"
+    }
+  },
+  "fallback": {
+    "enabled": true,
+    "sql_generator_fallback": "copilot",
+    "explainer_fallback": "copilot"
+  }
+}
+```
+
+Provider options: `"ollama"`, `"copilot"`, `"openai_compat"`. When fallback is enabled, the connector seamlessly switches if the primary provider is unavailable.
+
+#### 4. `glossary.json` — Business Term Definitions
+
+Map business terms to SQL expressions so the LLM generates accurate queries:
+
+```json
+{
+  "terms": [
+    {
+      "term": "revenue",
+      "definition": "SUM(orders.total_amount) - refers to the total_amount column in the orders table, not a standalone column"
+    },
+    {
+      "term": "churn",
+      "definition": "An account with status='cancelled' and cancelled_at within the last 90 days"
+    },
+    {
+      "term": "last quarter",
+      "definition": "The most recently completed fiscal quarter. Fiscal year starts in April."
+    }
+  ]
+}
+```
+
+#### 5. `admin_config.json` — Admin UI and Database Settings
+
+```json
+{
+  "admin_ui": {
+    "enabled": true,
+    "path": "/admin",
+    "allowed_github_users": ["your-github-username"],
+    "session_timeout_hours": 24
+  },
+  "database": {
+    "type": "postgres",
+    "connection_string_env": "DATABASE_URL",
+    "read_only_enforce": true
+  }
+}
 ```
 
 ---
@@ -324,41 +694,83 @@ Once deployed and installed, interact with the agent in GitHub Copilot Chat by m
 
 | Prompt | What it does |
 |--------|-------------|
-| `@db2-agent show me all tables in the database` | Lists all user-defined tables with column counts |
-| `@db2-agent what are the top 10 customers by total revenue?` | Generates and runs a GROUP BY + ORDER BY query |
-| `@db2-agent how many orders were placed last month?` | Queries with a date range filter |
-| `@db2-agent describe the EMPLOYEES table` | Returns column names, types, and lengths |
-| `@db2-agent what is the average salary by department?` | Aggregation query with GROUP BY |
-| `@db2-agent show me orders that are still pending` | Filters by status column |
+| `@db-copilot show me all tables in the database` | Lists all user-defined tables with column counts |
+| `@db-copilot what are the top 10 customers by total revenue?` | Generates and runs a GROUP BY + ORDER BY query |
+| `@db-copilot how many orders were placed last month?` | Queries with a date range filter |
+| `@db-copilot describe the customers table` | Returns column names, types, and relationships |
+| `@db-copilot what is the average salary by department?` | Aggregation query with GROUP BY |
+| `@db-copilot show me orders that are still pending` | Filters by status column |
 
-### Example Conversation
+### Example Response (successful query)
 
-```
-You: @db2-agent What are the top 5 departments by headcount?
+````markdown
+📊 **Results: Top 5 Customers by Revenue**
 
-🤖 db2-agent:
-I'll query the database to find the departments with the most employees.
+Here are your top customers for last quarter:
 
-**SQL executed:**
+| Customer | Revenue |
+|----------|---------|
+| Acme Corp | $89,400 |
+| GlobalTech | $67,200 |
+| ... | ... |
+
+Total revenue across top 5: $245,800. Average: $49,160.
+
+<details>
+<summary>🔍 SQL Query Used</summary>
+
 ```sql
-SELECT WORKDEPT, COUNT(*) AS HEADCOUNT
-FROM EMPLOYEE
-GROUP BY WORKDEPT
-ORDER BY HEADCOUNT DESC
-FETCH FIRST 5 ROWS ONLY
+SELECT c.name, SUM(o.total_amount) as revenue
+FROM customers c
+JOIN orders o ON c.id = o.customer_id
+WHERE o.created_at >= '2026-01-01'
+GROUP BY c.name
+ORDER BY revenue DESC
+LIMIT 5
 ```
 
-**Results:**
+</details>
+````
 
-| WORKDEPT | HEADCOUNT |
-|----------|-----------|
-| A00      | 5         |
-| B01      | 1         |
-| C01      | 3         |
-| D01      | 2         |
-| D11      | 9         |
+### Example Response (self-corrected query)
 
-**Department D11** has the largest team with **9 employees**, followed by **Department A00** with 5.
+````markdown
+📊 **Results: Top 5 Customers by Revenue**
+
+> ℹ️ **Note:** My first query used a column that doesn't exist (`revenue`).
+> I corrected it to use `SUM(total_amount)` instead. I've learned this for future queries.
+
+[results...]
+
+<details>
+<summary>🔍 SQL Query Used (corrected)</summary>
+
+**First attempt (failed):**
+```sql
+SELECT customer_name, revenue FROM customers ORDER BY revenue DESC LIMIT 5
+-- Error: column "revenue" does not exist
+```
+
+**Corrected query:**
+```sql
+SELECT c.name, SUM(o.total_amount) as revenue ...
+```
+
+</details>
+````
+
+### Real-Time Status Messages
+
+During query processing, the user sees live status updates via SSE:
+
+```
+🔍 Searching approved schema for relevant tables...
+📝 Generating SQL query...
+✅ Query validated against approved tables
+⚡ Checking query cost...
+⚡ Running query against database...
+📊 Processing 47 rows (showing top 10)...
+💬 Preparing your answer...
 ```
 
 ---
@@ -371,14 +783,14 @@ You can use this extension from Microsoft Teams via the GitHub integration:
 
 1. Install the **GitHub app for Teams** from the [Microsoft Teams App Store](https://teams.microsoft.com/l/app/836ecc9e-6dca-4696-a2e9-15e252cd3f31)
 2. Connect your GitHub account in Teams
-3. Ensure your GitHub account has the DB2 Copilot Extension installed
+3. Ensure your GitHub account has the DB Copilot Extension installed
 
 ### Usage in Teams
 
-In any Teams chat or channel, mention `@GitHub` followed by `@db2-agent`:
+In any Teams chat or channel, mention `@GitHub` followed by your agent name:
 
 ```
-@GitHub @db2-agent show me the latest 10 orders
+@GitHub @db-copilot show me the latest 10 orders
 ```
 
 ### Current Limitations
@@ -389,11 +801,62 @@ In any Teams chat or channel, mention `@GitHub` followed by `@db2-agent`:
 
 ---
 
+## Admin UI
+
+The connector includes a built-in admin interface at `/admin` for managing all configuration — no file editing required.
+
+### Accessing the Admin UI
+
+1. Set at least one admin user in `config/admin_config.json`:
+   ```json
+   {
+     "admin_ui": {
+       "allowed_github_users": ["your-github-username"]
+     }
+   }
+   ```
+2. Navigate to `https://your-fqdn/admin`
+3. Sign in with your GitHub account
+4. Only users listed in `allowed_github_users` can access the admin panel
+
+### Admin Pages
+
+| Page | Path | Description |
+|------|------|-------------|
+| Dashboard | `/admin` | System health overview and status bar |
+| Schema Access | `/admin/schema` | Browse all schemas (Tier 1), approve/deny tables and columns |
+| Query Safety | `/admin/safety` | Row limits, cost thresholds, rate limits, transparency toggles |
+| LLM Configuration | `/admin/llm` | Provider selection, model settings, fallback configuration |
+| Business Glossary | `/admin/glossary` | Add/edit/remove business term definitions |
+| Database Settings | `/admin/database` | Connection status, read-only verification, DB type |
+
+All changes write to the corresponding JSON config file → trigger hot-reload → create an audit log entry.
+
+### Admin Session Security
+
+- Sessions are signed with HMAC-SHA256 using the `ADMIN_SESSION_SECRET` environment variable
+- If `ADMIN_SESSION_SECRET` is not set, a random secret is generated at startup (sessions will not survive restarts)
+- For production deployments, always set `ADMIN_SESSION_SECRET` to a stable random value:
+  ```bash
+  ADMIN_SESSION_SECRET=$(openssl rand -hex 32)
+  ```
+
+---
+
 ## Security
+
+### Read-Only Enforcement (4 Layers)
+
+The connector enforces read-only access at four independent layers:
+
+1. **Database user permissions** — The connector should connect as a user with only `SELECT` privileges (see setup below)
+2. **Connection-level setting** — For PostgreSQL, `default_transaction_read_only=on` is verified at startup
+3. **SQL sanitizer** — Only `SELECT` statements are permitted; all DDL/DML keywords are blocked
+4. **Post-generation validation** — Every generated query is parsed and validated against the approved schema before execution
 
 ### SQL Sanitization
 
-The `db2/sanitizer.go` enforces a strict allowlist policy on all generated SQL:
+The `database/sanitizer.go` enforces a strict policy on all generated SQL:
 
 - ✅ **Only `SELECT` statements are permitted**
 - ❌ Blocked: `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `CREATE`, `TRUNCATE`, `EXEC`, `MERGE`, `GRANT`, `REVOKE`
@@ -410,16 +873,20 @@ Every incoming request is verified to originate from GitHub using **ECDSA with S
 
 ### Other Security Practices
 
-- 🔒 **Read-only DB2 credentials** — Use a DB2 user with `SELECT` privileges only
-- 🔒 **Query timeout** — All DB2 queries have a 30-second hard timeout
-- 🔒 **Schema caching** — Schema info is cached in memory, not exposed in API responses
-- 🔒 **No secrets in logs** — API tokens and DB2 credentials are never logged
+- 🔒 **Read-only database user** — Use a user with `SELECT` privileges only (see below)
+- 🔒 **Query timeout** — All queries have a configurable timeout (default 30 seconds)
+- 🔒 **Cost estimation** — Expensive queries are rejected before execution via `EXPLAIN`
+- 🔒 **Rate limiting** — Per-user and global request rate limits prevent abuse
+- 🔒 **Schema access control** — Only admin-approved tables and columns are queryable
+- 🔒 **Hidden schemas** — Sensitive schemas can be completely hidden from users
+- 🔒 **No secrets in logs** — API tokens and database credentials are never logged
+- 🔒 **Audit trail** — Every query, validation, and error is recorded in append-only logs
 - 🔒 **Environment variables** — All secrets are loaded from environment (`.env` is gitignored)
 - 🔒 **Non-root Docker container** — The runtime container runs as `appuser` (UID 1001)
 
 ### Read-Only Database User Setup
 
-For maximum safety, create a dedicated read-only database user for the connector. The connector enforces read-only access in code, but using a read-only DB user provides an additional layer of protection.
+For maximum safety, create a dedicated read-only database user for the connector. The connector enforces read-only access in code, but using a read-only DB user provides an additional layer of protection at the database level.
 
 #### PostgreSQL
 
@@ -452,7 +919,10 @@ GRANT db_copilot_readonly TO db_copilot;
 ALTER USER db_copilot SET default_transaction_read_only = on;
 ```
 
-Connect using: `DATABASE_URL=postgres://db_copilot:your-secure-password@localhost:5432/your_database`
+Connect using:
+```
+DATABASE_URL=postgres://db_copilot:your-secure-password@localhost:5432/your_database?sslmode=require
+```
 
 #### IBM DB2
 
@@ -470,7 +940,7 @@ GRANT CONNECT ON DATABASE TO USER db_copilot;
 GRANT SELECT ON TABLE schema1.customers TO USER db_copilot;
 GRANT SELECT ON TABLE schema1.orders TO USER db_copilot;
 -- Or grant SELECT on all tables in a schema:
--- GRANT SELECT ON ALL TABLES IN SCHEMA public TO USER db_copilot;
+-- GRANT SELECT ON ALL TABLES IN SCHEMA schema1 TO USER db_copilot;
 
 -- Grant access to the catalog views (needed for schema discovery)
 GRANT SELECT ON SYSIBM.SYSTABLES TO USER db_copilot;
@@ -481,91 +951,144 @@ GRANT SELECT ON SYSCAT.TABCOMMENTS TO USER db_copilot;
 GRANT SELECT ON SYSCAT.COLCOMMENTS TO USER db_copilot;
 ```
 
-Connect using: `DB2_CONN_STRING=HOSTNAME=localhost;PORT=50000;DATABASE=your_database;UID=db_copilot;PWD=your-secure-password;PROTOCOL=TCPIP`
+Connect using:
+```
+DB2_CONN_STRING=HOSTNAME=localhost;PORT=50000;DATABASE=your_database;UID=db_copilot;PWD=your-secure-password;PROTOCOL=TCPIP
+```
 
 > **Important:** Do not grant `INSERT`, `UPDATE`, `DELETE`, `ALTER`, or `DROP` privileges to the connector user. The connector will still refuse to execute write queries in code, but using a read-only user prevents accidental or malicious writes at the database level.
 
 ---
 
-## Admin UI
+## Health Monitoring
 
-The connector includes a built-in admin interface at `/admin` for managing schema access, query limits, and LLM configuration.
+The connector runs periodic background health checks and exposes a detailed `/health` endpoint.
 
-### Accessing the Admin UI
+### Configuration
 
-1. Set at least one admin user in `config/admin_config.json`:
-   ```json
-   {
-     "admin_ui": {
-       "allowed_github_users": ["your-github-username"]
-     }
-   }
-   ```
-2. Navigate to `https://your-fqdn/admin`
-3. Sign in with your GitHub account
-4. Only users listed in `allowed_github_users` can access the admin panel
+Health settings live in `query_safety.json` under the `"health"` key:
 
-### Admin Pages
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `check_interval_seconds` | 60 | How often background checks run |
+| `database_ping` | true | Ping the database on each check |
+| `ollama_ping` | true | Check LLM provider availability |
+| `schema_max_age_hours` | 6 | Schema cache considered stale after this |
+| `schema_auto_refresh` | true | Automatically recrawl stale schemas |
 
-| Page | Path | Description |
-|------|------|-------------|
-| Dashboard | `/admin` | System health overview |
-| Schema Access | `/admin/schema` | Approve/deny schemas, tables, and columns |
-| Query Safety | `/admin/safety` | Row limits, cost thresholds, rate limits |
-| LLM Configuration | `/admin/llm` | SQL generation and explanation providers |
-| Business Glossary | `/admin/glossary` | Add domain-specific term definitions |
-| Database Settings | `/admin/database` | Connection status and configuration |
+### `/health` Endpoint
 
-### Admin Session Security
+Returns HTTP 200 when all components are healthy, HTTP 503 when any component is unhealthy.
 
-- Sessions are signed with HMAC-SHA256 using the `ADMIN_SESSION_SECRET` environment variable
-- If `ADMIN_SESSION_SECRET` is not set, a random secret is generated at startup (sessions will not survive restarts)
-- For production deployments, always set `ADMIN_SESSION_SECRET` to a stable random value:
-  ```bash
-  ADMIN_SESSION_SECRET=$(openssl rand -hex 32)
-  ```
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-03-14T10:00:00Z",
+  "components": [
+    {
+      "name": "database",
+      "status": "healthy",
+      "message": "postgres reachable",
+      "latency_ms": 3
+    },
+    {
+      "name": "llm",
+      "status": "healthy",
+      "message": "ollama/sqlcoder:7b available",
+      "latency_ms": 45
+    },
+    {
+      "name": "schema",
+      "status": "healthy",
+      "message": "last crawled 2026-03-14T09:55:00Z"
+    }
+  ]
+}
+```
+
+### Status Levels
+
+- **healthy** — all components are healthy
+- **degraded** — at least one component is degraded (e.g., LLM fallback active) but none are unhealthy
+- **unhealthy** — at least one critical component is down (e.g., database unreachable)
 
 ---
 
-## Configuration Reference
+## Audit Logging
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `PORT` | Port the HTTP server listens on | `8080` | No |
-| `CLIENT_ID` | GitHub App Client ID | — | **Yes** |
-| `CLIENT_SECRET` | GitHub App Client Secret | — | **Yes** |
-| `FQDN` | Public URL of the agent (no trailing slash) | — | **Yes** |
-| `DB2_CONN_STRING` | DB2 ODBC connection string | — | Yes (DB2) |
-| `DATABASE_URL` | PostgreSQL connection string | — | Yes (PostgreSQL) |
-| `CONFIG_DIR` | Directory containing JSON config files | `config` | No |
-| `ADMIN_SESSION_SECRET` | Secret for signing admin session cookies | random | No (recommended) |
+Every interaction produces audit entries in append-only JSONL files with daily rotation.
 
-### DB2 Connection String Format
+### Configuration
 
-```
-HOSTNAME=<host>;PORT=<port>;DATABASE=<dbname>;UID=<user>;PWD=<password>;PROTOCOL=TCPIP
-```
+Audit settings live in `query_safety.json` under the `"audit"` key:
 
-| Component | Description | Example |
-|-----------|-------------|---------|
-| `HOSTNAME` | DB2 server IP or hostname | `db2.example.com` |
-| `PORT` | DB2 server port | `50000` |
-| `DATABASE` | Database name | `SAMPLE` |
-| `UID` | DB2 username | `db2readonly` |
-| `PWD` | DB2 password | `s3cr3t` |
-| `PROTOCOL` | Always `TCPIP` for network | `TCPIP` |
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `enabled` | true | Enable/disable audit logging |
+| `directory` | `data/audit` | Directory for audit log files |
+| `rotation` | `daily` | Log file rotation frequency |
+| `retention_days` | 90 | How long to keep log files |
+| `log_user_questions` | true | Log the user's natural language question |
+| `log_generated_sql` | true | Log the SQL generated by the LLM |
+| `log_results` | false | Log actual result data (**not recommended**) |
+| `log_row_counts` | true | Log row counts returned |
+| `log_latency` | true | Log query execution time |
+
+### Events Logged
+
+| Event | Description |
+|-------|-------------|
+| `SYSTEM_START` | Connector startup with config summary |
+| `DB_CONNECTION_OK` / `DB_CONNECTION_FAILED` | Database connectivity |
+| `READ_ONLY_VERIFIED` / `READ_ONLY_WARNING` | Read-only status with liability disclaimer |
+| `SCHEMA_CRAWL_COMPLETE` | Schema discovery results |
+| `CONFIG_LOADED` / `CONFIG_RELOADED` / `CONFIG_RELOAD_FAILED` | Configuration changes |
+| `CORRECTIONS_LOADED` | Learned corrections loaded on startup |
+| `QUERY_START` | User question with GitHub username and user ID |
+| `SQL_GENERATED` | Attempt number, SQL, model used, generation latency |
+| `SQL_VALIDATED` / `SQL_VALIDATION_FAILED` | Tables referenced, approval status |
+| `EXPLAIN_CHECK` | Estimated rows, cost, within limits |
+| `QUERY_EXECUTED` | Rows returned, rows displayed, execution latency |
+| `QUERY_FAILED` | Error, will retry flag |
+| `QUERY_BLOCKED` | Reason, recommendation if applicable |
+| `QUERY_COST_EXCEEDED` | Estimates, limits, retry flag |
+| `QUERY_COMPLETE` | Total latency, retry count, status |
+| `CORRECTION_LEARNED` | Original SQL, corrected SQL, correction type |
+| `LLM_FALLBACK` | Which provider failed, which fallback used |
+| `RATE_LIMITED` | User, request count, limit |
+| `RECOMMENDATION_MADE` | What was recommended and to whom |
+| `HEALTH_CHECK` | Component statuses |
+
+> **Note:** Actual query result data is never logged — only row counts and summary statistics.
 
 ---
 
 ## Development
 
+### Building
+
+```bash
+# Build without CGO (excludes DB2 driver)
+CGO_ENABLED=0 go build ./...
+
+# Build with CGO (includes DB2 driver — requires IBM clidriver)
+go build ./...
+```
+
 ### Running Tests
 
 ```bash
-# Run all tests that don't require the IBM DB2 driver
+# Run all tests without CGO
 CGO_ENABLED=0 go test ./... -v
 
-# Run the SQL sanitizer tests specifically
+# Run specific package tests
+CGO_ENABLED=0 go test ./database/... -v
+CGO_ENABLED=0 go test ./pipeline/... -v
+CGO_ENABLED=0 go test ./config/... -v
+CGO_ENABLED=0 go test ./admin/... -v
+CGO_ENABLED=0 go test ./llm/... -v
+
+# Run DB2 sanitizer tests specifically
 CGO_ENABLED=0 go test ./db2/... -run TestSanitizeSQL -v
 
 # Run all tests with CGO (requires IBM clidriver installed)
@@ -574,58 +1097,48 @@ go test ./... -v
 
 ### Code Walkthrough
 
-**Request lifecycle:**
+**Pipeline execution lifecycle** (`pipeline/executor.go`):
 
-1. `main.go` → Fetches the GitHub public key and sets up routes
-2. `POST /agent` → `agent.Service.ChatCompletion()`
-3. Signature is verified with `validPayload()` using ECDSA
-4. Request body is decoded into `copilot.ChatRequest`
-5. `generateCompletion()` is called:
-   - DB2 schema fetched (cached via `sync.Once`)
-   - System prompt built with schema context
-   - Non-streaming call to Copilot LLM to get SQL
-   - SQL extracted from `<sql>...</sql>` tags
-   - SQL sanitized by `db2.SanitizeSQL()`
-   - SQL executed on DB2 with 30s timeout
-   - Results formatted as markdown table
-   - Streaming call to Copilot LLM to explain results
-   - SSE stream proxied back to the client
+1. **Rate limit check** — reject if user exceeds per-minute quota
+2. **Schema context** — build Tier 2 approved schema, include glossary and learned corrections
+3. **SQL generation** — call the configured LLM provider (Ollama/Copilot/OpenAI-compatible)
+4. **Post-generation validation** — parse SQL, verify all tables/columns against approved list
+5. **Cost estimation** — run `EXPLAIN`, reject if estimated rows or cost exceed thresholds
+6. **LIMIT injection** — inject or cap LIMIT clause for safety
+7. **Query execution** — run the validated SQL against the database
+8. **Result processing** — compute summary statistics, detect result shape
+9. **Explanation** — call explanation LLM with results and stats
+10. **Response streaming** — stream formatted response with SQL in collapsible block
 
-### Adding New Features
+**On failure:** steps 3–6 are retried once with error context and column hints (self-correction loop). Successful corrections are saved to `learned_corrections.jsonl`.
 
-**Adding a new route:**
-```go
-// main.go
-mux.HandleFunc("GET /my-route", myHandler)
-```
+### Formatting
 
-**Modifying the system prompt:**
-Edit the `systemPrompt` constant in `agent/service.go`.
-
-**Extending SQL validation:**
-Add keywords to the `blockedKeywords` slice in `db2/sanitizer.go`.
-
-**Adding connection pool tuning:**
-Modify the constants in `db2/client.go`:
-```go
-const (
-    maxOpenConns    = 10
-    maxIdleConns    = 5
-    connMaxLifetime = 5 * time.Minute
-    queryTimeout    = 30 * time.Second
-)
+```bash
+gofmt -w .
 ```
 
 ---
 
 ## Troubleshooting
 
+### Database connection fails
+
+**Symptom:** `FATAL database ping failed` at startup
+
+**Solutions:**
+- **PostgreSQL:** Verify `DATABASE_URL` format: `postgres://user:pass@host:5432/dbname?sslmode=require`
+- **DB2:** Verify `DB2_CONN_STRING` format: `HOSTNAME=...;PORT=...;DATABASE=...;UID=...;PWD=...;PROTOCOL=TCPIP`
+- Check that the database server is running and the port is open
+- Confirm the database user has `CONNECT` permissions
+- For Docker Compose, wait for the database health check to pass
+
 ### IBM DB2 driver fails to build
 
 **Symptom:** `undefined: SQLSMALLINT` or similar CGO errors
 
 **Solution:**
-1. Ensure the IBM DB2 clidriver is installed (see [Step 2](#step-2-install-ibm-db2-driver))
+1. Ensure the IBM DB2 clidriver is installed (see [Step 2](#step-2-install-database-driver))
 2. Verify environment variables are set:
    ```bash
    echo $IBM_DB_HOME
@@ -633,16 +1146,43 @@ const (
    echo $DYLD_LIBRARY_PATH # macOS
    ```
 3. Try running `go run setup.go` in the `go_ibm_db/installer` directory
+4. Alternatively, use `CGO_ENABLED=0 go build ./...` for PostgreSQL-only builds
 
-### DB2 connection fails
+### LLM provider not available
 
-**Symptom:** `failed to connect to DB2` or `ping failed`
+**Symptom:** `FATAL could not initialize LLM provider` or queries fail with generation errors
 
 **Solutions:**
-- Verify the connection string format: `HOSTNAME=...;PORT=...;DATABASE=...;UID=...;PWD=...;PROTOCOL=TCPIP`
-- Check that the DB2 server is running and the port is open: `telnet <hostname> 50000`
-- Confirm the DB2 user has connect permissions: `CONNECT TO <db> USER <uid> USING <pwd>`
-- For Docker Compose, wait for the DB2 health check to pass (can take 2–5 minutes)
+- **Ollama:** Ensure Ollama is running (`ollama serve`) and the model is pulled (`ollama pull sqlcoder:7b`)
+- **Copilot:** The Copilot token comes from the user's request — no setup needed
+- **OpenAI-compatible:** Check `llm_config.json` for correct URL and API key environment variable
+- If fallback is enabled, the connector will automatically switch to the backup provider
+
+### Schema not loading
+
+**Symptom:** The LLM doesn't seem to know about your tables
+
+**Solutions:**
+- Check that the database user has `SELECT` on catalog views (`information_schema` for PostgreSQL, `SYSCAT.*` for DB2)
+- Schema is cached and auto-refreshed — check the `/health` endpoint for schema age
+- If a table exists but isn't queryable, it may not be approved in `access_config.json` — use the Admin UI at `/admin/schema` to review
+
+### Rate limited
+
+**Symptom:** `You've been asking a lot of questions` error
+
+**Solutions:**
+- Default limit is 10 requests per minute per user and 50 global
+- Adjust limits in `config/query_safety.json` → `rate_limiting` section, or via the Admin UI at `/admin/safety`
+
+### Query cost exceeded
+
+**Symptom:** `That question would require scanning too much data`
+
+**Solutions:**
+- The connector runs `EXPLAIN` before executing and rejects queries exceeding cost thresholds
+- Try adding date ranges, filters, or asking for aggregations (count, average, total)
+- Adjust thresholds in `config/query_safety.json` → `cost_estimation` section
 
 ### ngrok URL not working
 
@@ -660,27 +1200,7 @@ const (
 
 **Solutions:**
 - This usually means the request is not coming from GitHub (e.g., a direct `curl` test)
-- For local testing, set `GITHUB_COPILOT_DISABLE_SIGNATURE_CHECK=true` in your `.env` (add this feature if needed)
 - Ensure your server clock is synchronized (NTP)
-
-### No SQL generated / agent answers without running a query
-
-**Behavior:** The agent responds conversationally without executing SQL
-
-**This is expected** when:
-- The question doesn't require a database query (e.g., "how are you?")
-- The LLM determines no query is needed
-
-If SQL should have been generated, try rephrasing the question to be more specific about the data you need.
-
-### Schema not loading
-
-**Symptom:** The LLM doesn't seem to know about your tables
-
-**Solutions:**
-- The schema is loaded from `SYSCAT.COLUMNS` — verify your DB2 user has `SELECT` on this catalog
-- Schema is cached in memory; restart the server after schema changes
-- Check server logs for `WARN could not fetch schema info`
 
 ---
 
